@@ -1,0 +1,22 @@
+{
+  "name": "@support-agent-asp/agent-core",
+  "version": "0.1.0",
+  "description": "Rule-based classification + plain-language explanation layer for the Support Agent ASP",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@support-agent-asp/onchain-reader": "*",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "support-agent-asp",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "onchain-reader",
+    "agent-core",
+    "sherpas-support-mcp-server",
+    "widget",
+    "bot-adapters/*",
+    "website"
+  ]
+}

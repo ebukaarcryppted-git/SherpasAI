@@ -1,0 +1,24 @@
+{
+  "name": "@support-agent-asp/discord-bot",
+  "version": "0.1.0",
+  "description": "Discord bot adapter for the Support Agent ASP — drop a tx hash in a support channel, get a diagnosis back as an embed.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "deploy-commands": "tsx src/deploy-commands.ts",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@support-agent-asp/agent-core": "*",
+    "discord.js": "^14.16.3",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

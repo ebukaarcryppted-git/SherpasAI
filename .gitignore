@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Env files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Payment/session runtime state (local dev artifacts, not source)
+.mpp-channel-state.json
+payment-receipts.jsonl
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Local Claude Code tooling (not project source)
+.claude/
+
+# Vercel
+.vercel
