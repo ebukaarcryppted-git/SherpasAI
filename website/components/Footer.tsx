@@ -27,14 +27,40 @@ function IconGithub({ className }: { className?: string }) {
 }
 
 const ECOSYSTEM_LINKS = [
-  { label: "OKX X Page", href: "https://x.com/okx" },
   { label: "X Layer X Page", href: "https://x.com/XLayerOfficial" },
   { label: "OKX.AI", href: "https://www.okx.ai/tutorial/asp" },
-  { label: "Onchain OS", href: "https://web3.okx.com/onchainos" },
-  { label: "About X Layer", href: "https://web3.okx.com/xlayer" },
   { label: "Etherscan", href: "https://etherscan.io/" },
   { label: "X Layer Explorer", href: "https://web3.okx.com/explorer/x-layer/evm" },
 ];
+
+const RESOURCES_LINKS = [
+  { label: "Onchain OS", href: "https://web3.okx.com/onchainos" },
+  { label: "About X Layer", href: "https://web3.okx.com/xlayer" },
+];
+
+function FooterLinkColumn({ title, links }: { title: string; links: { label: string; href: string }[] }) {
+  return (
+    <div>
+      <span className="font-heading text-lg font-bold tracking-tight text-text">
+        {title}
+      </span>
+      <ul className="mt-4 space-y-2.5">
+        {links.map((link) => (
+          <li key={link.href}>
+            <a
+              href={link.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-heading text-sm font-bold tracking-tight text-text-muted transition-colors duration-200 hover:text-primary"
+            >
+              {link.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const socialLinkClass =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-bg-elevated/70 text-text-muted backdrop-blur-md transition duration-200 ease-out will-change-transform hover:scale-110 hover:border-primary hover:text-primary hover:shadow-[0_0_24px_-4px_rgba(198,226,79,0.5)]";
@@ -42,7 +68,7 @@ const socialLinkClass =
 export function Footer() {
   return (
     <footer className="px-4 py-12 sm:px-6 lg:px-10">
-      <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-10 border-t border-border pt-8 sm:grid-cols-[auto_1fr]">
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-10 border-t border-border pt-8 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <div className="flex items-center gap-3">
             <SherpasLogo className="h-10 w-10 shrink-0" />
@@ -76,24 +102,9 @@ export function Footer() {
           </p>
         </div>
 
-        <div className="sm:text-right">
-          <span className="font-heading text-lg font-bold tracking-tight text-text">
-            Ecosystem
-          </span>
-          <ul className="mt-4 space-y-2.5">
-            {ECOSYSTEM_LINKS.map((link) => (
-              <li key={link.href}>
-                <a
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-heading text-sm font-bold tracking-tight text-text-muted transition-colors duration-200 hover:text-primary"
-                >
-                  {link.label}
-                </a>
-              </li>
-            ))}
-          </ul>
+        <div className="flex gap-16 sm:gap-20">
+          <FooterLinkColumn title="Ecosystem" links={ECOSYSTEM_LINKS} />
+          <FooterLinkColumn title="Resources" links={RESOURCES_LINKS} />
         </div>
       </div>
     </footer>
