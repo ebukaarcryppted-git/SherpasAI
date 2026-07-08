@@ -99,14 +99,7 @@ html {
 }
 
 body {
-  /* Subtle lime vignette at the very top of the page (Statecall's
-     signature glow) — layered under the solid dark base. Position-fixed
-     via the `attachment: fixed` behavior of no-repeat radial gradients on
-     body, so it stays as a soft ambient light no matter how far the user
-     scrolls. */
-  background:
-    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(198, 226, 79, 0.10), transparent 70%),
-    var(--color-bg);
+  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
 }

@@ -21,8 +21,8 @@ const ITEMS = [
 
 export function Composability() {
   return (
-    <section className="border-y border-border px-4 py-24">
-      <div className="mx-auto max-w-6xl">
+    <section className="border-y border-border px-4 py-24 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1400px]">
         <ScrollReveal>
           <div className="text-center">
             <span className="font-mono text-xs text-primary">{"// COMPOSABLE BY DESIGN"}</span>

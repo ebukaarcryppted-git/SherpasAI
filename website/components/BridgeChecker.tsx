@@ -60,7 +60,7 @@ export function BridgeChecker() {
   const tone = result ? STATUS_TONE[result.details.Status] ?? "border-border text-text" : "";
 
   return (
-    <section id="bridge" className="px-4 py-24">
+    <section id="bridge" className="px-4 py-24 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-3xl">
         <div className="text-center">
           <span className="font-mono text-xs text-primary">{"// BRIDGE STATUS"}</span>

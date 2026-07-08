@@ -64,7 +64,7 @@ export function ApprovalChecker() {
   }
 
   return (
-    <section id="approvals" className="border-y border-border px-4 py-24">
+    <section id="approvals" className="border-y border-border px-4 py-24 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-3xl">
         <div className="text-center">
           <span className="font-mono text-xs text-primary">{"// APPROVAL HYGIENE"}</span>

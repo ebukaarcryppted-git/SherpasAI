@@ -41,8 +41,8 @@ const socialLinkClass =
 
 export function Footer() {
   return (
-    <footer className="px-4 py-12">
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 border-t border-border pt-8 sm:grid-cols-[auto_1fr]">
+    <footer className="px-4 py-12 sm:px-6 lg:px-10">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-10 border-t border-border pt-8 sm:grid-cols-[auto_1fr]">
         <div className="flex flex-col items-start gap-3">
           <div className="flex items-center gap-3">
             <SherpasLogo className="h-10 w-10 shrink-0" />

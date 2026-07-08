@@ -101,7 +101,7 @@ export function DiagnosisWidget() {
     }[STATUS_STYLE[result.mode].tone];
 
   return (
-    <section id="diagnose" className="px-4 py-24">
+    <section id="diagnose" className="px-4 py-24 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-3xl">
         <div className="text-center">
           <span className="font-mono text-xs text-primary">{"// TRY IT LIVE"}</span>

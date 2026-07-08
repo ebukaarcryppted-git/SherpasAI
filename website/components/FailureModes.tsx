@@ -49,8 +49,8 @@ const MODES = [
 
 export function FailureModes() {
   return (
-    <section id="failure-modes" className="px-4 py-24">
-      <div className="mx-auto max-w-6xl">
+    <section id="failure-modes" className="px-4 py-24 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1400px]">
         <ScrollReveal>
           <div className="mx-auto max-w-2xl text-center">
             <span className="font-mono text-xs text-primary">

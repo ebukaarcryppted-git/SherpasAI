@@ -42,8 +42,8 @@ export function Navbar() {
   }, []);
 
   return (
-    <header className="fixed inset-x-0 top-4 z-50 px-4">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <header className="fixed inset-x-0 top-4 z-50 px-4 sm:px-6 lg:px-10">
+      <div className="flex items-center justify-between gap-4">
         <Link
           href="#top"
           className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/60 px-3 py-2 font-wordmark text-[17px] tracking-tighter text-text backdrop-blur-md transition duration-200 ease-out hover:border-primary/40"

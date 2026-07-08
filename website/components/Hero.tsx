@@ -21,7 +21,7 @@ export function Hero() {
   }
 
   return (
-    <section id="top" className="relative flex min-h-[92vh] items-center overflow-hidden px-4 pt-40 pb-12">
+    <section id="top" className="relative flex min-h-[92vh] items-center overflow-hidden px-4 pt-40 pb-12 sm:px-6 lg:px-10">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center opacity-20"
@@ -36,7 +36,7 @@ export function Hero() {
         />
       </div>
 
-      <div className="relative mx-auto w-full max-w-6xl">
+      <div className="relative mx-auto w-full max-w-[1400px]">
         <h1
           className="animate-fade-up max-w-5xl font-heading text-6xl font-bold uppercase leading-[1.03] tracking-tight text-text sm:text-7xl md:text-[5.5rem]"
           style={{ animationDelay: "80ms" }}
