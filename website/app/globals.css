@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  /* Dark Green base */
-  --color-bg: #002424;
-  --color-bg-elevated: #003333;
-  --color-bg-elevated-2: #004040;
+  /* Statecall-inspired deep near-black green base — the whole surface
+     reads as one dark stage, cards lift by half a shade rather than
+     jumping to a fully different swatch. */
+  --color-bg: #050f09;
+  --color-bg-elevated: #0a1810;
+  --color-bg-elevated-2: #0f2318;
 
-  --color-border: #0a4a4a;
-  --color-border-strong: #1a6363;
+  --color-border: #1a2a1e;
+  --color-border-strong: #2c4030;
 
-  /* Martian Green as primary accent, with a lifted tint for hover/active */
-  --color-primary: #99cc33;
-  --color-primary-hover: #aed94f;
-  --color-primary-soft: #24330f;
+  /* Lime primary — carries the whole accent role: pill highlights, CTAs,
+     inline emphasis. `soft` is the same hue at low alpha, for backgrounds
+     of tags and hover glows. */
+  --color-primary: #c6e24f;
+  --color-primary-hover: #d5ee63;
+  --color-primary-soft: rgba(198, 226, 79, 0.12);
 
-  --color-text: #f2f7f4;
-  --color-text-muted: #8fada3;
-  --color-text-faint: #4f6b63;
+  --color-text: #eef2e6;
+  --color-text-muted: #98a08a;
+  --color-text-faint: #4d5748;
 
-  --color-warning: #e0a530;
-  --color-danger: #e0523f;
-  --color-success: #3fc98a;
+  --color-warning: #e6c34a;
+  --color-danger: #e07373;
+  --color-success: #7ed48a;
 }
 
 @theme inline {
@@ -39,8 +43,9 @@
   --color-danger: var(--color-danger);
   --color-success: var(--color-success);
 
-  --font-heading: var(--font-space-grotesk);
-  --font-body: var(--font-dm-sans);
+  --font-heading: var(--font-squada-one);
+  --font-body: var(--font-manrope);
+  --font-wordmark: var(--font-titan-one);
   --font-mono: var(--font-fira-code);
 
   --animate-scan: scan 1.6s linear infinite;
@@ -94,7 +99,14 @@ html {
 }
 
 body {
-  background: var(--color-bg);
+  /* Subtle lime vignette at the very top of the page (Statecall's
+     signature glow) — layered under the solid dark base. Position-fixed
+     via the `attachment: fixed` behavior of no-repeat radial gradients on
+     body, so it stays as a soft ambient light no matter how far the user
+     scrolls. */
+  background:
+    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(198, 226, 79, 0.10), transparent 70%),
+    var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
 }

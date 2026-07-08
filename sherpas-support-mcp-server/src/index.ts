@@ -6,6 +6,21 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { registerDiagnoseTool } from "./tools/diagnose.js";
 import { SERVER_NAME, SERVER_VERSION, SERVER_DESCRIPTION, DEFAULT_HTTP_PORT, MCP_HTTP_PATH } from "./constants.js";
 import { getPaymentGate } from "./payments/session.js";
+import { checkRateLimit } from "./rateLimit.js";
+
+/**
+ * Applied ahead of the payment gate, so it protects the "ungated" fallback
+ * too (no OKX env vars configured — see payments/session.ts's own
+ * console.error warning). Without this, an unconfigured deployment serves
+ * free, unlimited, RPC-cost-incurring diagnose_transaction calls to anyone.
+ */
+const RATE_LIMIT_PER_MINUTE = Number(process.env.MCP_RATE_LIMIT_PER_MINUTE ?? 30);
+
+function clientKeyFor(req: import("node:http").IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress ?? "unknown";
+}
 
 /** Fresh server per connection — tools are cheap to register, and this avoids any state bleeding across concurrent stdio/HTTP callers. */
 function createServer(): McpServer {
@@ -44,6 +59,20 @@ async function runHttp(): Promise<void> {
   const httpServer = createHttpServer(async (req, res) => {
     if (!req.url || !req.url.startsWith(MCP_HTTP_PATH)) {
       res.writeHead(404).end("Not found");
+      return;
+    }
+
+    const rateLimit = checkRateLimit(clientKeyFor(req), RATE_LIMIT_PER_MINUTE);
+    if (!rateLimit.allowed) {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (rateLimit.retryAfterSeconds) headers["Retry-After"] = String(rateLimit.retryAfterSeconds);
+      res.writeHead(429, headers).end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Too many requests — please wait a moment and try again." },
+          id: null,
+        })
+      );
       return;
     }
 

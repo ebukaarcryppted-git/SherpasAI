@@ -52,7 +52,10 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
 
   const readers: LiveReaders = { ...defaultLiveReaders, ...params.readers };
   const expectedChainId = params.expectedChainId ?? X_LAYER_MAINNET_ID;
-  const { input, deps, rawCalldata } = await buildDiagnosisInput({ ...params, expectedChainId });
+  const { input, deps, rawCalldata, resolvedChainId, networkNote } = await buildDiagnosisInput({
+    ...params,
+    expectedChainId,
+  });
 
   if (params.bridge) {
     const { bridge } = await buildBridgeInput({
@@ -68,17 +71,13 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
     input.bridge = bridge;
   }
 
-  // classify.diagnose() runs on the FULL input (dappContext, bridge, etc.)
-  // before we ever consider labeling anything "healthy" — a tx that
-  // succeeded on the wrong chain, or with a mismatched connected wallet,
-  // must still get a chance to trip the wrong-network rule first. An
-  // earlier version of this short-circuited on `status === "success"`
-  // before calling diagnose() at all, which — confirmed live against a
-  // real Ethereum tx queried with expectedChainId set to X Layer — silently
-  // reported a wrong-network tx as "no failure detected" instead of
-  // WRONG_NETWORK, because the short-circuit never gave classify.ts's own
-  // rules a chance to run.
+  // Per Phase 1 spec §2a: classify.ts runs against whatever chain the tx
+  // actually resolved on. A dApp/chain mismatch is no longer a terminal
+  // WRONG_NETWORK verdict — it's a `networkNote` we attach *after* the
+  // real diagnosis runs, so a tx that succeeded on the "wrong" chain
+  // still gets its real status reported, augmented by the note.
   const diagnosis: LiveDiagnosis = diagnose(input, deps);
+  if (networkNote) diagnosis.networkNote = networkNote;
 
   if (
     !params.bridge &&
@@ -87,14 +86,17 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
     diagnosis.ruleTriggered === "diagnose:noRuleMatched"
   ) {
     // Nothing in classify.ts fired — the tx really did just succeed cleanly
-    // on the expected chain. classify.ts has no explicit "success" mode
+    // on the resolved chain. classify.ts has no explicit "success" mode
     // (it's a failure classifier), so this relabeling happens here instead.
+    // The networkNote is preserved so a "wrong-chain but successful" tx
+    // still surfaces the chain mismatch to the user (Phase 1 spec §2a).
     return {
       mode: "NOT_A_FAILURE",
       confidence: 1,
       evidence: { blockNumber: input.tx.blockNumber, gasUsed: input.tx.gasUsed?.toString() },
       ruleTriggered: "diagnoseLive:successNoRuleMatched",
       healthy: true,
+      networkNote,
     };
   }
 
@@ -107,10 +109,13 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
   // override — a missing contract alone isn't as conclusive as the primary
   // rules, so it doesn't get to redirect the classification outright.
   if (input.tx.status === "reverted" && input.tx.revertData === "0x" && input.tx.to) {
-    const codeOnExpectedChain = await readers
-      .getCode(expectedChainId, input.tx.to as Hex)
+    // Check for code on the RESOLVED chain (where the tx actually is), not
+    // the expected chain — a missing contract on the tx's own chain is
+    // what makes the "revert had no data" signal meaningful.
+    const codeOnResolvedChain = await readers
+      .getCode(resolvedChainId, input.tx.to as Hex)
       .catch(() => undefined);
-    if (!codeOnExpectedChain || codeOnExpectedChain === "0x") {
+    if (!codeOnResolvedChain || codeOnResolvedChain === "0x") {
       diagnosis.evidence = {
         ...diagnosis.evidence,
         possibleWrongNetworkSignal:
@@ -132,8 +137,11 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
     // without assuming how long it sat in the mempool.
     const referenceBlock = BigInt(input.tx.blockNumber) - BigInt(1);
     const executionBlock = BigInt(input.tx.blockNumber);
+    // Quote against the resolved chain — the pool exists on the chain the
+    // tx actually ran on, not the one someone hinted at as the search
+    // target.
     const quantified = await quantifySlippageV2(
-      expectedChainId,
+      resolvedChainId,
       input.tx.to as Hex,
       rawCalldata,
       referenceBlock,

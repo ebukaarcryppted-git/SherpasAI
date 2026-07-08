@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { safeErrorMessage } from "@support-agent-asp/agent-core";
 import { live, isSupportedChain, listSupportedChains } from "../services/onchain-reader.js";
 
 const TIMEOUT_PATTERNS = [/timeout/i, /timed out/i, /econnreset/i, /fetch failed/i, /socket hang up/i];
@@ -134,9 +135,9 @@ export function registerDiagnoseTool(server: McpServer): void {
           };
         }
 
-        const message = err instanceof Error ? err.message : String(err);
+        const message = safeErrorMessage(err, "Diagnosis failed — an unexpected error occurred reading chain data.", "diagnose_transaction failed:");
         return {
-          content: [{ type: "text", text: `Diagnosis failed: ${message}` }],
+          content: [{ type: "text", text: message }],
           isError: true,
         };
       }

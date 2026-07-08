@@ -70,11 +70,32 @@ export type ClassifiedMode =
   | "UNKNOWN_PENDING"
   | "INSUFFICIENT_BALANCE";
 
+/**
+ * Attached to any diagnosis by the pipeline caller (buildDiagnosisInput +
+ * diagnoseLive) when the chain the tx was actually resolved on differs
+ * from `dappContext.expectedChainId`. Informational: augments the primary
+ * diagnosis rather than replacing it (Phase 1 spec §2a). classify.ts
+ * itself never populates this — chain resolution isn't part of the pure
+ * rules, it's an input-building step.
+ */
+export interface NetworkNote {
+  foundOn: number;
+  expected: number;
+  message: string;
+}
+
 export interface Diagnosis {
   mode: ClassifiedMode;
   confidence: number; // 0-1
   evidence: Record<string, unknown>;
   ruleTriggered: string; // which branch fired, for debugging/demo transparency
+  /**
+   * Optional network-mismatch note (Phase 1 spec §2a). Populated by the
+   * pipeline caller when `dappContext.expectedChainId` doesn't match the
+   * resolved chain — informational only, doesn't affect `mode` or
+   * `confidence`.
+   */
+  networkNote?: NetworkNote;
 }
 
 /**
@@ -434,8 +455,15 @@ function classifyBridgeStatus(input: DiagnosisInput): Diagnosis | null {
 // ---------------------------------------------------------------------------
 
 export function diagnose(input: DiagnosisInput, deps?: ClassifyDeps): Diagnosis {
+  // WRONG_NETWORK is intentionally NOT in this list any more — per Phase 1
+  // spec §2a, chain resolution now happens in the pipeline caller
+  // (buildDiagnosisInput). The tx is diagnosed against whichever chain it
+  // was actually resolved on; a dApp/wallet chain mismatch surfaces as a
+  // `networkNote` attached to the result (not as a terminal mode that skips
+  // the real diagnosis). `classifyWrongNetwork` remains exported below for
+  // callers that want to check the old terminal condition on its own.
+  void deps; // still accepted in the signature for backward compatibility (see classifyWrongNetwork)
   const rules: Array<() => Diagnosis | null> = [
-    () => classifyWrongNetwork(input, deps),
     () => classifyNonceIssue(input),
     () => classifyGasUnderpriced(input),
     () => classifySlippageRevert(input),

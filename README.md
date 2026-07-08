@@ -9,9 +9,11 @@ hallucinate an explanation. Paste a transaction hash, get back a
 plain-language diagnosis, the exact evidence that produced it, and — where a
 safe fix exists — a one-click wallet action to actually resolve it.
 
-Built for **X Layer**, and also reads Ethereum mainnet. Ships as a rule-based
-diagnosis engine, a callable MCP tool any AI agent can pay to use, an
-embeddable widget for any dApp, and Discord/Telegram bots.
+Supports **Ethereum mainnet and X Layer mainnet** as two equally first-class
+chains — a tx hash is resolved against both in parallel, not searched on one
+with the other as a fallback guess. Ships as a rule-based diagnosis engine,
+a callable MCP tool any AI agent can pay to use, an embeddable widget for
+any dApp, and Discord/Telegram bots.
 
 ---
 
@@ -44,12 +46,22 @@ instant, evidence-backed answer:
 
 ## What it diagnoses
 
-The rule engine classifies onchain transactions into these modes, in
-priority order, each backed by a real onchain read:
+Chain resolution happens first, before any failure classification: every tx
+hash is queried against **all supported chains in parallel** (Ethereum +
+X Layer), and the full rule pipeline runs against whichever chain the
+transaction is actually found on — not a guessed or hinted-at chain. If a
+dApp declared which chain it expected the wallet to be on and that differs
+from where the tx actually resolved, that mismatch is attached to the
+result as an informational `networkNote` rather than short-circuiting into
+a terminal "wrong network" verdict — a transaction that succeeded on a
+different chain than expected still gets reported as healthy, with the
+chain mismatch noted alongside it, not hidden behind a dead end.
+
+Once resolved, the rule engine classifies the transaction into one of these
+modes, in priority order, each backed by a real onchain read:
 
 | Mode | What it means |
 |---|---|
-| `WRONG_NETWORK` | Tx was sent on a different chain than the wallet/dApp expected — detected via a direct dApp-context comparison or a cross-chain hash search. |
 | `NONCE_ALREADY_USED` | A different transaction already confirmed at this nonce. |
 | `NONCE_GAP` | An earlier-nonce transaction hasn't confirmed yet, so this one is stuck queued behind it. |
 | `GAS_UNDERPRICED` | Fee was below the current network minimum at submission (or has since fallen behind), sitting unmined. |
@@ -146,6 +158,42 @@ diagnosis logic is written and tested exactly once.
   another agent (a protocol's own support bot, or a third-party autonomous
   agent) can call `diagnose_transaction` as a paid sub-task, and this ASP
   itself could call a risk-check ASP before giving wallet-drain advice.
+
+---
+
+## Production hardening
+
+Everything below was added specifically for safe public deployment, not
+just local development:
+
+- **Per-IP rate limiting on every live surface** — the website's API routes
+  (`/api/diagnose`, `/api/approvals`, `/api/bridge`, `/api/wallet`,
+  `/api/diagnose-proxy`) and the MCP server's HTTP transport all cap
+  requests per minute per caller, with a proper `429` + `Retry-After`
+  response. The MCP server's rate limit sits *ahead of* the payment gate,
+  so even an intentionally-ungated deployment (no OKX env vars configured —
+  a valid local-dev choice) can't be hammered for free, unlimited,
+  RPC-cost-incurring calls.
+- **No raw error messages ever reach a caller** — every external-facing
+  catch block (API routes, the MCP tool, both bots) routes through a shared
+  `safeErrorMessage()` helper: the real error is logged server-side, and
+  only a fixed, safe fallback string is returned. This matters specifically
+  because RPC client errors (viem's `HttpRequestError`/`TimeoutError`)
+  embed the full request URL in their message — including any
+  provider-API-key-in-URL (Alchemy/Infura/OnchainOS-style) if you've
+  configured a paid RPC endpoint via `ETH_MAINNET_RPC`/`XLAYER_MAINNET_RPC`.
+- **Demo-only routes are off by default in production** — `/widget-demo`
+  and `/api/mock-mcp` (fixture-driven, fabricated diagnoses for visually
+  testing every widget card) return `404` whenever `NODE_ENV=production`
+  unless you explicitly set `DEMO_ROUTES_ENABLED=true`.
+- **Known caveat, surfaced loudly rather than silently** — the MPP payment
+  channel's state (`website/lib/payments/channelStore.ts`) is file-backed
+  for simplicity, which doesn't hold up on serverless/ephemeral filesystems
+  or across multiple instances. If it detects it's running somewhere that
+  looks serverless (Vercel/Lambda/Netlify), it logs a loud warning rather
+  than silently risking repeated on-chain deposits or lost spend tracking —
+  swap in a real shared datastore (Redis/Postgres) before relying on this
+  under real multi-instance production traffic.
 
 ---
 
@@ -250,10 +298,12 @@ pitch as presented on the site.
 
 ## Supported chains
 
-- **X Layer mainnet** (chain ID `196`) — primary chain; also where MPP
-  payment settlement happens
-- **X Layer testnet / X1 Testnet** (chain ID `1952`)
-- **Ethereum mainnet** (chain ID `1`)
+- **Ethereum mainnet** (chain ID `1`) and **X Layer mainnet** (chain ID
+  `196`) — both diagnosed as equally first-class chains; MPP payment
+  settlement happens on X Layer specifically, since that's where OKX's
+  shared escrow contract is deployed
+- **X Layer testnet / X1 Testnet** (chain ID `1952`) — dev-only convenience,
+  not one of the two production chains above
 
 ---
 

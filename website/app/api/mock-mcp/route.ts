@@ -5,7 +5,15 @@ import { NextRequest, NextResponse } from "next/server";
  * verifying every SupportWidget card/state in a browser without needing a
  * real wallet or a live sherpas-support-mcp-server. Returns a canned
  * Diagnosis keyed off magic test hashes — never used outside /widget-demo.
+ *
+ * Gated the same way as /widget-demo (which is the only real caller): a
+ * production deployment serves 404 here by default, since this returns
+ * fabricated diagnoses and has no business being reachable once real users
+ * are hitting the site. Opt in with DEMO_ROUTES_ENABLED=true if needed.
  */
+function demoRoutesDisabled(): boolean {
+  return process.env.NODE_ENV === "production" && process.env.DEMO_ROUTES_ENABLED !== "true";
+}
 
 const FIXTURES: Record<string, unknown> = {
   "0x000000000000000000000000000000000000000000000000000000000000c001": {
@@ -81,6 +89,10 @@ const FIXTURES: Record<string, unknown> = {
 };
 
 export async function POST(req: NextRequest) {
+  if (demoRoutesDisabled()) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
   const body = await req.json().catch(() => null);
   const txHash: string | undefined = body?.params?.arguments?.txHash;
   const id = body?.id ?? null;

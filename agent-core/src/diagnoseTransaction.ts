@@ -3,7 +3,6 @@ import {
   findTransactionAcrossChains,
   getGasContext,
   getNonceContext,
-  X_LAYER_MAINNET_ID,
   SUPPORTED_CHAINS,
   type TransactionLookup,
 } from "@support-agent-asp/onchain-reader";
@@ -26,45 +25,48 @@ function chainLabel(chainId: number): string {
 /**
  * The core "paste a tx hash, get a diagnosis" flow — the same engine used
  * by the website widget, the MCP tool, and the Discord/Telegram bots.
+ *
+ * Per Phase 1 spec §2a and Phase 2 spec §1b: chain resolution happens in
+ * parallel across all supported chains (Ethereum + X Layer). Whichever
+ * chain the tx is actually on is the chain we diagnose against — there is
+ * no "expected chain"-vs-"found chain" terminal error path. If the caller
+ * supplies `expectedChainId`, it's used only as a tie-breaker when the
+ * same hash somehow exists on both chains (rare in practice), not as a
+ * filter that turns "found on Ethereum" into a WRONG_NETWORK verdict.
  */
 export async function diagnoseTransaction(
   rawHash: string,
-  expectedChainId: number = X_LAYER_MAINNET_ID
+  expectedChainId?: number
 ): Promise<Diagnosis> {
   if (!isHash(rawHash)) {
     return {
       hash: rawHash,
       mode: "not_found",
       chainLabel: null,
-      headline: "That doesn't look like a transaction hash.",
-      fix: "Transaction hashes are 66-character hex strings starting with 0x. Double-check and paste again.",
+      headline: "Hmm, that doesn't look like a transaction hash to me.",
+      fix: "A transaction hash is 66 characters long and starts with '0x' — kind of a long random-looking string. Give it another look; usually a stray character got copied or one got dropped when pasting.",
       details: {},
     };
   }
 
   const hash = rawHash as Hash;
   const crossChain = await findTransactionAcrossChains(hash, expectedChainId);
+  // Prefer the search-hinted chain if the caller supplied one AND the tx
+  // is found there; otherwise take whichever chain returned a match. Both
+  // Ethereum and X Layer are first-class — a hit on either is a real
+  // diagnosis target, not an error.
   const primary =
-    crossChain.foundOn.find((r) => r.chainId === expectedChainId) ?? crossChain.foundOn[0];
+    (expectedChainId !== undefined
+      ? crossChain.foundOn.find((r) => r.chainId === expectedChainId)
+      : undefined) ?? crossChain.foundOn[0];
 
   if (!primary) {
     return {
       hash,
-      mode: "wrong_network",
+      mode: "not_found",
       chainLabel: null,
-      headline: `Not found on ${chainLabel(expectedChainId)} or the chains we cross-checked.`,
-      fix: "Confirm this hash was actually sent to the chain you expect — it may have been broadcast on a different network entirely.",
-      details: {},
-    };
-  }
-
-  if (crossChain.wrongNetworkSuspected) {
-    return {
-      hash,
-      mode: "wrong_network",
-      chainLabel: chainLabel(primary.chainId),
-      headline: `Found on ${chainLabel(primary.chainId)}, not ${chainLabel(expectedChainId)} as expected.`,
-      fix: `Point your wallet/dApp at ${chainLabel(primary.chainId)} to see this transaction, or resend it on the chain you actually meant to use.`,
+      headline: "I couldn't track this hash down on Ethereum or X Layer.",
+      fix: "First thing worth double-checking is the hash itself — one wrong character is enough to break the lookup. If it's definitely right, chances are it belongs to a different chain we don't cover here yet, so it just won't show up on our side.",
       details: {},
     };
   }
@@ -74,8 +76,8 @@ export async function diagnoseTransaction(
       hash,
       mode: "healthy",
       chainLabel: chainLabel(primary.chainId),
-      headline: "This transaction succeeded — no failure detected.",
-      fix: "Nothing to fix here. If the outcome still looks wrong, check the emitted logs for the actual amounts settled.",
+      headline: "Good news — this transaction actually went through just fine.",
+      fix: "There's nothing broken here for me to fix. If the outcome still feels off to you (like a token amount that seems wrong), it's worth peeking at the event logs on a block explorer — that's where you'll see the actual amounts that ended up moving, which sometimes differs from what you expected because of things like fees or price impact.",
       details: {
         Block: primary.blockNumber?.toString() ?? "unknown",
         "Gas used": primary.gasUsed?.toString() ?? "unknown",
@@ -110,8 +112,8 @@ function diagnoseReverted(tx: TransactionLookup, label: string): Diagnosis {
       hash: tx.hash,
       mode: "slippage",
       chainLabel: label,
-      headline: "Reverted on slippage — the price moved past your tolerance.",
-      fix: "Increase slippage tolerance to 1% (or the current market volatility) and retry. If the pair has thin liquidity, consider splitting the trade into smaller size.",
+      headline: "This is a classic swap fail — the price shifted while your trade was on its way to the chain, and it moved past what you told your wallet you were okay with.",
+      fix: "Two things to try. First, bump your slippage tolerance up when you retry — 1% is a safe starting point, and if the token's really volatile (memecoins, new launches, thin pools) you might need more like 3-5%. Second, if the pool doesn't have much liquidity, breaking the trade into smaller chunks helps a lot — big trades on shallow pools push the price around on their own, which is what triggered this in the first place.",
       details: { "Revert reason": reason ?? "unknown" },
     };
   }
@@ -121,8 +123,8 @@ function diagnoseReverted(tx: TransactionLookup, label: string): Diagnosis {
       hash: tx.hash,
       mode: "allowance",
       chainLabel: label,
-      headline: "Reverted on a token allowance check.",
-      fix: "Approve the spender contract for at least the amount you're trying to move, then retry the transaction.",
+      headline: "Your wallet hasn't given this contract permission to move that token yet, and that's what tripped things up.",
+      fix: "You'll need to hit 'Approve' first — that's actually a separate one-click transaction that lets the contract spend your token on your behalf. Once that approval goes through, retry the swap or transfer you were originally trying to do. Some dApps roll these into one smooth step, but plenty still ask you to approve, wait a beat, then do the real thing.",
       details: { "Revert reason": reason ?? "unknown" },
     };
   }
@@ -131,10 +133,10 @@ function diagnoseReverted(tx: TransactionLookup, label: string): Diagnosis {
     hash: tx.hash,
     mode: "reverted_other",
     chainLabel: label,
-    headline: "Transaction reverted.",
+    headline: "The transaction hit a snag and got rolled back — basically, the contract said 'nope' and undid everything.",
     fix: reason
-      ? `Contract reverted with: "${reason}". Check the calling contract's logic against that reason.`
-      : "Reverted without a decodable reason — inspect the calldata against the target contract's expected inputs.",
+      ? `Here's what the contract left behind as a hint: "${reason}". That's usually a sign that some condition it checks — a balance, a permission, an amount, a deadline — didn't hold when your tx tried to run. If it's your own dApp, take a look at the code path that enforces that check; if it's someone else's protocol, this reason is exactly what their support would ask for.`
+      : "The contract didn't leave a message about why it refused, which is a little annoying but pretty common with newer or unverified contracts. Best next move: check what your wallet actually sent (data + amounts) against what the target contract expects. A block explorer's 'decode input' feature is your friend here.",
     details: reason ? { "Revert reason": reason } : {},
   };
 }
@@ -145,8 +147,8 @@ async function diagnosePending(tx: TransactionLookup, label: string): Promise<Di
       hash: tx.hash,
       mode: "pending",
       chainLabel: label,
-      headline: "Still pending.",
-      fix: "Give it a little longer, or check the block explorer for network status.",
+      headline: "Still processing — the chain hasn't picked it up yet.",
+      fix: "Give it another minute or two. If it's been a while, a quick look at a block explorer will tell you whether the whole network is running slow or if it's just this tx that's stuck.",
       details: {},
     };
   }
@@ -161,8 +163,8 @@ async function diagnosePending(tx: TransactionLookup, label: string): Promise<Di
       hash: tx.hash,
       mode: "nonce_gap",
       chainLabel: label,
-      headline: `Nonce ${tx.nonce} is queued behind nonce ${nonce.latestNonce}, which hasn't confirmed yet.`,
-      fix: `Find and confirm (or replace/cancel) the transaction using nonce ${nonce.latestNonce} first — everything after it is blocked until it lands.`,
+      headline: `There's an older transaction of yours sitting in line ahead of this one, and until it goes through nothing behind it can move — including this one.`,
+      fix: `Here's the deal: transactions from the same wallet have to confirm in order. Yours got sent with nonce ${tx.nonce}, but nonce ${nonce.latestNonce} still hasn't landed, so this one has to wait its turn. Open your wallet's activity tab, find the pending tx with nonce ${nonce.latestNonce}, and either wait for it, speed it up by resubmitting with higher gas, or cancel it (a common trick: send a 0-value tx to yourself using that same nonce with higher gas — that replaces the stuck one). Once the queue clears, this transaction will get its turn.`,
       details: {
         "Tx nonce": String(tx.nonce),
         "Latest confirmed nonce": String(nonce.latestNonce),
@@ -176,8 +178,8 @@ async function diagnosePending(tx: TransactionLookup, label: string): Promise<Di
       hash: tx.hash,
       mode: "gas_too_low",
       chainLabel: label,
-      headline: "Gas price is below current network conditions — stuck in the mempool.",
-      fix: `Resubmit with a gas price at or above ~${gas.currentGasPrice.toString()} wei (current network price), or use replace-by-fee to speed up this exact tx.`,
+      headline: "This one's stuck in the mempool — the gas fee you paid is just below what the network needs right now to include a new tx.",
+      fix: `Gas prices move around a lot depending on how busy the chain is, and yours was fine at submission but got outbid. Two easy options: wait it out and hope the network calms down (sometimes it does, sometimes it doesn't), or use your wallet's 'speed up' button to resubmit with higher gas. The current going rate is around ${gas.currentGasPrice.toString()} wei — matching or beating that is what'll get it mined.`,
       details: {
         "Tx gas price": (gas.txMaxFeePerGas ?? gas.txGasPrice ?? BigInt(0)).toString(),
         "Current network gas price": gas.currentGasPrice.toString(),
@@ -189,8 +191,8 @@ async function diagnosePending(tx: TransactionLookup, label: string): Promise<Di
     hash: tx.hash,
     mode: "pending",
     chainLabel: label,
-    headline: "Still pending — gas and nonce both look normal.",
-    fix: "Give it a little longer. If it's been more than a few minutes past the chain's normal block time, the sequencer may be congested — check the block explorer for network status.",
+    headline: "Still processing — your gas and nonce both look normal, so nothing's actually wrong here.",
+    fix: "Just a matter of patience. Sometimes networks get a burst of activity and everything slows down for a few minutes. If it's been way longer than usual for this chain (say, 5+ minutes on X Layer or 10+ minutes on Ethereum during quiet hours), a quick peek at a block explorer will confirm whether the whole network's crawling or if there's something specific going on.",
     details: { Nonce: String(tx.nonce) },
   };
 }

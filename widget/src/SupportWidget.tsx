@@ -11,7 +11,23 @@ import { AlertIcon, CheckIcon } from "./components/Icons.js";
 import { buildApproveCalldata, buildRetrySwapCalldata, bumpFee } from "./calldata.js";
 
 export interface SupportWidgetProps {
-  /** Chain the host dApp expects the wallet to be on — passed to the MCP tool as expectedChainId, and used as the switch-network target. */
+  /**
+   * Chains the underlying diagnosis engine can look up transactions on —
+   * matches whatever /onchain-reader supports (Phase 2 spec section 1a).
+   * `expectedChainId` must appear in this list; the widget throws at mount
+   * otherwise so a misconfigured embed fails loudly rather than silently
+   * misclassifying wrong-network cases. Defaults to
+   * [Ethereum Mainnet, X Layer Mainnet] — the two production chains the
+   * MCP server ships with — so a host only needs to override this if it's
+   * intentionally narrowing or extending that set.
+   */
+  supportedChainIds?: readonly number[];
+  /**
+   * Chain the host dApp actually runs on — one specific chain, distinct
+   * from `supportedChainIds` (the search space). Passed to the MCP tool as
+   * `expectedChainId`, used as the switch-network target, and threaded
+   * through wagmi's `usePublicClient` / `useWaitForTransactionReceipt`.
+   */
   expectedChainId: number;
   /** URL of a deployed diagnose_transaction MCP server, e.g. https://your-mcp-server.com/mcp */
   mcpEndpoint: string;
@@ -63,10 +79,23 @@ const primaryButtonStyle: CSSProperties = {
 };
 const stageLineStyle: CSSProperties = { fontFamily: font.mono, fontSize: 12, color: colors.textMuted };
 
+// Ethereum Mainnet + X Layer Mainnet — the two production chains phase 2
+// spec section 1a commits to. Widget defaults to this pair so a host embed
+// with just `expectedChainId` set (the vast majority) doesn't need to
+// restate what everyone already agrees on.
+const DEFAULT_SUPPORTED_CHAIN_IDS: readonly number[] = [1, 196];
+
 export function SupportWidget(props: SupportWidgetProps) {
+  const supportedChainIds = props.supportedChainIds ?? DEFAULT_SUPPORTED_CHAIN_IDS;
+  if (!supportedChainIds.includes(props.expectedChainId)) {
+    throw new Error(
+      `SupportWidget: expectedChainId=${props.expectedChainId} is not in supportedChainIds=[${supportedChainIds.join(", ")}]. ` +
+        `Either add it to supportedChainIds or point expectedChainId at one of the listed chains.`
+    );
+  }
   return (
     <ShadowHost>
-      <SupportWidgetInner {...props} />
+      <SupportWidgetInner {...props} supportedChainIds={supportedChainIds} />
     </ShadowHost>
   );
 }

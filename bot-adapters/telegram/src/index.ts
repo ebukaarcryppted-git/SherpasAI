@@ -3,6 +3,7 @@ import {
   diagnoseTransaction,
   diagnoseApprovals,
   diagnoseBridge,
+  safeErrorMessage,
   X_LAYER_MAINNET_ID,
   ETHEREUM_MAINNET_ID,
 } from "@support-agent-asp/agent-core";
@@ -38,7 +39,7 @@ bot.command("approvals", async (ctx) => {
     const report = await diagnoseApprovals(X_LAYER_MAINNET_ID, address as Hex, tokens);
     await ctx.replyWithHTML(approvalsToMessage(report));
   } catch (err) {
-    await ctx.reply(`Couldn't scan approvals: ${err instanceof Error ? err.message : "unknown error"}`);
+    await ctx.reply(safeErrorMessage(err, "Couldn't scan approvals — an unexpected error occurred.", "/approvals command failed:"));
   }
 });
 
@@ -58,7 +59,7 @@ bot.command("bridge", async (ctx) => {
     );
     await ctx.replyWithHTML(diagnosisToMessage(diagnosis));
   } catch (err) {
-    await ctx.reply(`Couldn't check bridge status: ${err instanceof Error ? err.message : "unknown error"}`);
+    await ctx.reply(safeErrorMessage(err, "Couldn't check bridge status — an unexpected error occurred.", "/bridge command failed:"));
   }
 });
 
@@ -77,7 +78,7 @@ async function respondWithDiagnosis(ctx: Context, txHash: string) {
     const diagnosis = await diagnoseTransaction(txHash, X_LAYER_MAINNET_ID);
     await ctx.replyWithHTML(diagnosisToMessage(diagnosis));
   } catch (err) {
-    await ctx.reply(`Couldn't diagnose that: ${err instanceof Error ? err.message : "unknown error"}`);
+    await ctx.reply(safeErrorMessage(err, "Couldn't diagnose that — an unexpected error occurred.", "diagnose command failed:"));
   }
 }
 

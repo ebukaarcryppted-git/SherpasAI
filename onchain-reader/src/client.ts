@@ -28,13 +28,32 @@ const clientCache = new Map<number, PublicClient>();
  * public endpoint, for comparison, returns HTTP 200 with an "Unauthorized"
  * JSON-RPC error body, which looks fine at a glance but isn't).
  */
+/**
+ * Per Phase 2 spec section 1a: an operator can override the RPC endpoint
+ * for either production chain via environment variable (e.g. to point at a
+ * paid Alchemy/Infura/OnchainOS URL instead of a public one). If set, the
+ * env-var URL is tried first; the known-good public endpoints below are
+ * kept as fallbacks so we still ride through an operator-supplied endpoint
+ * outage instead of hard-failing.
+ */
+function withEnvOverride(envVar: string, defaults: string[]): string[] {
+  const override = process.env[envVar]?.trim();
+  return override ? [override, ...defaults] : defaults;
+}
+
 const RPC_ENDPOINTS: Record<number, string[]> = {
-  [X_LAYER_MAINNET_ID]: ["https://rpc.xlayer.tech", "https://xlayerrpc.okx.com"],
-  [X_LAYER_TESTNET_ID]: [
+  [ETHEREUM_MAINNET_ID]: withEnvOverride("ETH_MAINNET_RPC", [
+    "https://ethereum.publicnode.com",
+    "https://eth.drpc.org",
+  ]),
+  [X_LAYER_MAINNET_ID]: withEnvOverride("XLAYER_MAINNET_RPC", [
+    "https://rpc.xlayer.tech",
+    "https://xlayerrpc.okx.com",
+  ]),
+  [X_LAYER_TESTNET_ID]: withEnvOverride("XLAYER_TESTNET_RPC", [
     "https://testrpc.xlayer.tech/terigon",
     "https://xlayertestrpc.okx.com/terigon",
-  ],
-  [ETHEREUM_MAINNET_ID]: ["https://ethereum.publicnode.com", "https://eth.drpc.org"],
+  ]),
 };
 
 /**

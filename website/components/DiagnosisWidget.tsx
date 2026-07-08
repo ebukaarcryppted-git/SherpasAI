@@ -6,7 +6,7 @@ import { IconAlert, IconArrowRight, IconCheck, IconSearch } from "./icons";
 import type { Diagnosis, FailureMode } from "@support-agent-asp/agent-core";
 
 const SCAN_LOG = [
-  "resolving transaction on X Layer mainnet…",
+  "resolving transaction across Ethereum + X Layer…",
   "reading receipt + trace…",
   "checking allowance / gas / nonce state…",
   "classifying against known failure patterns…",
@@ -49,13 +49,21 @@ export function DiagnosisWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hash }),
+        signal: AbortSignal.timeout(20_000),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Diagnosis failed.");
       setResult(data as Diagnosis);
       setStatus("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      setError(
+        timedOut
+          ? "This is taking too long — the chain RPC isn't responding. Try again in a moment."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong."
+      );
       setStatus("error");
     }
   }
@@ -101,26 +109,27 @@ export function DiagnosisWidget() {
             Run a real diagnosis
           </h2>
           <p className="mt-3 font-body text-text-muted">
-            This calls live X Layer RPCs. Paste any real tx hash from{" "}
+            Live RPC reads across Ethereum and X Layer. Paste any real tx hash
+            from <span className="font-mono text-text">chain 1</span> or{" "}
             <span className="font-mono text-text">chain 196</span>.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-10 flex flex-col gap-3 sm:flex-row">
-          <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-bg-elevated px-4 py-3.5 focus-within:border-primary transition-colors duration-200">
+          <div className="flex flex-1 items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <IconSearch className="h-4 w-4 shrink-0 text-text-faint" />
             <input
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="0x…"
               aria-label="Transaction hash"
-              className="w-full bg-transparent font-mono text-sm text-text placeholder:text-text-faint focus:outline-none"
+              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={status === "loading"}
-            className="cursor-pointer flex items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-6 py-3.5 font-heading text-sm font-bold text-bg transition-colors duration-200 hover:bg-primary-hover hover:border-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg shadow-[0_0_32px_-6px_rgba(198,226,79,0.55)] transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 hover:shadow-[0_0_40px_-4px_rgba(198,226,79,0.75)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {status === "loading" ? "Reading chain…" : "Diagnose"}
             {status !== "loading" && <IconArrowRight className="h-4 w-4" />}
@@ -128,7 +137,7 @@ export function DiagnosisWidget() {
         </form>
 
         {status === "loading" && (
-          <div className="relative mt-8 overflow-hidden rounded-xl border border-border bg-bg-elevated p-6">
+          <div className="relative mt-8 overflow-hidden rounded-2xl border border-border bg-bg-elevated/70 p-6 backdrop-blur-md">
             <div className="animate-scan pointer-events-none absolute inset-x-0 h-16 bg-primary/5" />
             <div className="space-y-2 font-mono text-xs text-text-muted">
               {SCAN_LOG.slice(0, logIndex + 1).map((line, i) => (
@@ -148,21 +157,21 @@ export function DiagnosisWidget() {
         )}
 
         {status === "error" && (
-          <div className="mt-8 rounded-xl border border-danger p-6">
+          <div className="mt-8 rounded-2xl border border-danger bg-bg-elevated/70 p-6 backdrop-blur-md">
             <div className="flex items-center gap-2 text-danger">
               <IconAlert className="h-4 w-4" />
-              <span className="font-heading text-sm font-bold">Couldn&apos;t diagnose</span>
+              <span className="font-heading text-base font-bold">Couldn&apos;t diagnose</span>
             </div>
             <p className="mt-2 font-body text-sm text-text-muted">{error}</p>
           </div>
         )}
 
         {status === "done" && result && (
-          <div className={`mt-8 rounded-xl border ${toneClass ?? "border-border"} bg-bg-elevated`}>
+          <div className={`mt-8 rounded-2xl border ${toneClass ?? "border-border"} bg-bg-elevated/70 backdrop-blur-md shadow-[0_0_40px_-16px_rgba(198,226,79,0.25)]`}>
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div className={`flex items-center gap-2 ${toneClass ?? ""}`}>
                 <ResultIcon mode={result.mode} />
-                <span className="font-heading text-sm font-bold tracking-wide">
+                <span className="font-heading text-base font-bold tracking-wide">
                   {STATUS_STYLE[result.mode].label}
                 </span>
               </div>
@@ -175,7 +184,7 @@ export function DiagnosisWidget() {
 
             <div className="px-6 py-6">
               <p className="font-mono text-xs text-text-faint truncate">{result.hash}</p>
-              <p className="mt-3 font-heading text-lg font-bold leading-snug text-text">
+              <p className="mt-3 font-heading text-xl font-bold leading-snug text-text">
                 {result.headline}
               </p>
 

@@ -28,15 +28,23 @@ function readConfig() {
   const mcpEndpoint = script?.dataset.mcpEndpoint;
   const supportUrl = script?.dataset.supportUrl;
 
+  // Comma-separated list, e.g. `data-supported-chain-ids="1,196"`. Omit to
+  // fall back to the widget's built-in default (Ethereum + X Layer). Bad
+  // values are dropped rather than throwing at script-tag load time.
+  const supportedChainIds = script?.dataset.supportedChainIds
+    ?.split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
   if (!mcpEndpoint) {
     throw new Error("SupportWidget embed: data-mcp-endpoint is required on the <script> tag.");
   }
 
-  return { chainId, mcpEndpoint, supportUrl };
+  return { chainId, mcpEndpoint, supportUrl, supportedChainIds };
 }
 
 function mount() {
-  const { chainId, mcpEndpoint, supportUrl } = readConfig();
+  const { chainId, mcpEndpoint, supportUrl, supportedChainIds } = readConfig();
 
   const container = document.createElement("div");
   container.style.position = "fixed";
@@ -56,7 +64,12 @@ function mount() {
   createRoot(container).render(
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <SupportWidget expectedChainId={chainId} mcpEndpoint={mcpEndpoint} supportUrl={supportUrl} />
+        <SupportWidget
+          expectedChainId={chainId}
+          mcpEndpoint={mcpEndpoint}
+          supportUrl={supportUrl}
+          supportedChainIds={supportedChainIds}
+        />
       </QueryClientProvider>
     </WagmiProvider>
   );

@@ -44,13 +44,21 @@ export function ApprovalChecker() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: address.trim(), tokens: tokenList }),
+        signal: AbortSignal.timeout(20_000),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Approval scan failed.");
       setReport(data as ApprovalReportJSON);
       setStatus("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      setError(
+        timedOut
+          ? "This is taking too long — the chain RPC isn't responding. Try again in a moment."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong."
+      );
       setStatus("error");
     }
   }
@@ -70,29 +78,29 @@ export function ApprovalChecker() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-3">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-elevated px-4 py-3.5 focus-within:border-primary transition-colors duration-200">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <IconShield className="h-4 w-4 shrink-0 text-text-faint" />
             <input
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="0x… wallet address"
               aria-label="Wallet address"
-              className="w-full bg-transparent font-mono text-sm text-text placeholder:text-text-faint focus:outline-none"
+              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-elevated px-4 py-3.5 focus-within:border-primary transition-colors duration-200">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <input
               value={tokens}
               onChange={(e) => setTokens(e.target.value)}
               placeholder="token addresses to check, comma-separated"
               aria-label="Token addresses"
-              className="w-full bg-transparent font-mono text-sm text-text placeholder:text-text-faint focus:outline-none"
+              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={status === "loading"}
-            className="cursor-pointer flex w-full items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-6 py-3.5 font-heading text-sm font-bold text-bg transition-colors duration-200 hover:bg-primary-hover hover:border-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="cursor-pointer flex w-full items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg shadow-[0_0_32px_-6px_rgba(198,226,79,0.55)] transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 hover:shadow-[0_0_40px_-4px_rgba(198,226,79,0.75)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {status === "loading" ? "Scanning approvals…" : "Scan approvals"}
             {status !== "loading" && <IconArrowRight className="h-4 w-4" />}
@@ -100,10 +108,10 @@ export function ApprovalChecker() {
         </form>
 
         {status === "error" && (
-          <div className="mt-8 rounded-xl border border-danger p-6">
+          <div className="mt-8 rounded-2xl border border-danger bg-bg-elevated/70 p-6 backdrop-blur-md">
             <div className="flex items-center gap-2 text-danger">
               <IconAlert className="h-4 w-4" />
-              <span className="font-heading text-sm font-bold">Scan failed</span>
+              <span className="font-heading text-base font-bold">Scan failed</span>
             </div>
             <p className="mt-2 font-body text-sm text-text-muted">{error}</p>
           </div>
@@ -111,7 +119,7 @@ export function ApprovalChecker() {
 
         {status === "done" && report && (
           <div
-            className={`mt-8 overflow-hidden rounded-xl border ${report.riskyCount > 0 ? "border-warning" : "border-success"} bg-bg-elevated`}
+            className={`mt-8 overflow-hidden rounded-2xl border ${report.riskyCount > 0 ? "border-warning" : "border-success"} bg-bg-elevated/70 backdrop-blur-md shadow-[0_0_40px_-16px_rgba(198,226,79,0.25)]`}
           >
             <div className="flex items-center gap-2 border-b border-border px-6 py-4">
               {report.riskyCount > 0 ? (
@@ -119,14 +127,14 @@ export function ApprovalChecker() {
               ) : (
                 <IconCheck className="h-4 w-4 text-success" />
               )}
-              <span className="font-heading text-sm font-bold text-text">{report.summary}</span>
+              <span className="font-heading text-base font-bold text-text">{report.summary}</span>
             </div>
 
             <div className="divide-y divide-border">
               {report.findings.map((f) => (
                 <div key={`${f.token}-${f.spender}`} className="px-6 py-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-heading text-sm font-bold text-text">
+                    <span className="font-heading text-base font-bold text-text">
                       {f.tokenSymbol}
                     </span>
                     <span

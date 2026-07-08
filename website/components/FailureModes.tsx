@@ -52,7 +52,7 @@ export function FailureModes() {
     <section id="failure-modes" className="px-4 py-24">
       <div className="mx-auto max-w-6xl">
         <ScrollReveal>
-          <div className="max-w-xl">
+          <div className="mx-auto max-w-2xl text-center">
             <span className="font-mono text-xs text-primary">
               {"// THE 6 THAT MATTER MOST"}
             </span>
@@ -69,16 +69,16 @@ export function FailureModes() {
         <div className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {MODES.map((mode, i) => (
             <ScrollReveal key={mode.title} delay={i * 60}>
-              <div className="group h-full rounded-xl border border-border bg-bg-elevated p-7 transition-colors duration-200 hover:bg-bg-elevated-2">
+              <div className="group h-full rounded-2xl border border-border bg-bg-elevated/60 p-7 backdrop-blur-md transition duration-300 ease-out will-change-transform hover:bg-bg-elevated-2/70 hover:scale-[1.02] hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_40px_-8px_rgba(198,226,79,0.35)]">
                 <div className="flex items-start justify-between">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border-strong bg-primary-soft text-primary transition-colors duration-200 group-hover:bg-primary group-hover:text-bg">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-strong bg-primary-soft text-primary transition-colors duration-200 group-hover:bg-primary group-hover:text-bg">
                     <mode.icon className="h-5 w-5" />
                   </span>
                   <span className="font-mono text-xs text-text-faint">
                     {mode.tag}
                   </span>
                 </div>
-                <h3 className="mt-5 font-heading text-lg font-bold text-text">
+                <h3 className="mt-5 font-heading text-2xl font-bold text-text">
                   {mode.title}
                 </h3>
                 <p className="mt-2 font-body text-sm leading-relaxed text-text-muted">

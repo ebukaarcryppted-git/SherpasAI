@@ -75,7 +75,12 @@ describe("buildDiagnosisInput", () => {
     expect(diagnosis.ruleTriggered).toBe("diagnose:noRuleMatched");
   });
 
-  it("uses the already-fetched cross-chain results as the wrong-network fallback with zero extra calls", async () => {
+  it("Phase 1 spec §2a: resolves the tx on its actual chain and reports its real status, not a forced not_found", async () => {
+    // Under the new spec, chain resolution is a *data-gathering step*
+    // (Phase 1 §2a, Phase 2 §1b), not a terminal classification. The
+    // caller passed expectedChainId=X_LAYER as a search hint, but the tx
+    // actually lives on Ethereum — buildDiagnosisInput must build the
+    // input from Ethereum's real data honestly.
     const readers = mockReaders({
       findTransactionAcrossChains: async () => ({
         hash: "0x000000000000000000000000000000000000000000000000000000000000cafe",
@@ -94,25 +99,65 @@ describe("buildDiagnosisInput", () => {
       }),
     });
 
-    const { input, deps } = await buildDiagnosisInput({
+    const { input, resolvedChainId, networkNote } = await buildDiagnosisInput({
       txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
       expectedChainId: X_LAYER,
       readers,
     });
 
-    // input.tx.chainId stays the EXPECTED chain (X_LAYER), not the chain we
-    // actually found it on (ETH) — classify.ts's wrong-network fallback
-    // compares its cross-chain lookup result against this field, so it must
-    // represent "what we expected," not "what we found," or the mismatch
-    // check compares a value against itself and never fires.
-    expect(input.tx.chainId).toBe(X_LAYER);
-    expect(deps.crossChainLookup?.("0x000000000000000000000000000000000000000000000000000000000000cafe")).toBe(ETH);
-    // Regression guard: status must be forced to "not_found" here even
-    // though the tx actually succeeded on Ethereum — classify.ts's
-    // wrong-network fallback only triggers on status === "not_found", so
-    // reporting the real ("success") status would silently skip it.
-    expect(input.tx.status).toBe("not_found");
-    expect(diagnose(input, deps).mode).toBe("WRONG_NETWORK");
+    // input.tx.chainId is now the RESOLVED chain (where the tx actually
+    // lives), not a "what we expected" fiction — the pipeline diagnoses
+    // what actually happened on that chain.
+    expect(input.tx.chainId).toBe(ETH);
+    expect(resolvedChainId).toBe(ETH);
+    // Real status flows through — no more forced "not_found" gymnastics.
+    expect(input.tx.status).toBe("success");
+    // No dappExpectedChainId was given, so no networkNote is populated —
+    // this caller was only using expectedChainId as a search hint, not as
+    // a stated dApp expectation.
+    expect(networkNote).toBeUndefined();
+  });
+
+  it("Phase 1 spec §2a: dApp-vs-resolved chain mismatch produces a networkNote, not a WRONG_NETWORK verdict", async () => {
+    // Caller genuinely declares the dApp expected X_LAYER, but the tx
+    // actually lives on Ethereum. The result: a networkNote for the
+    // pipeline caller to attach, plus an HONEST diagnosis of whatever
+    // happened on Ethereum.
+    const readers = mockReaders({
+      findTransactionAcrossChains: async () => ({
+        hash: "0x000000000000000000000000000000000000000000000000000000000000cafe",
+        foundOn: [
+          {
+            found: true,
+            chainId: ETH,
+            hash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
+            status: "success",
+            from: "0xfrom" as `0x${string}`,
+            to: "0xto" as `0x${string}`,
+            nonce: 5,
+          },
+        ],
+        wrongNetworkSuspected: true,
+      }),
+    });
+
+    const { input, networkNote } = await buildDiagnosisInput({
+      txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
+      dappExpectedChainId: X_LAYER,
+      readers,
+    });
+
+    expect(input.tx.chainId).toBe(ETH);
+    expect(input.tx.status).toBe("success"); // honest, not forced
+    expect(networkNote).toEqual({
+      foundOn: ETH,
+      expected: X_LAYER,
+      message: expect.stringContaining(`chain ${ETH}`),
+    });
+    // diagnose() itself no longer returns WRONG_NETWORK — a successful tx
+    // on the "wrong" chain still classifies as no failure; the networkNote
+    // is the piece that tells the user about the chain mismatch.
+    expect(diagnose(input).mode).not.toBe("WRONG_NETWORK");
   });
 
   it("does not invoke the cross-chain fallback within the recent-submission grace window (indexing lag, not wrong network)", async () => {
@@ -128,10 +173,13 @@ describe("buildDiagnosisInput", () => {
     expect(deps.crossChainLookup?.("0x000000000000000000000000000000000000000000000000000000000000cafe")).toBeNull();
   });
 
-  it("keeps the wrong-network dappContext check honest using the actually-observed chain, not a blind default", async () => {
-    // Tx actually landed on Ethereum, but the caller only asked for an
-    // allowance check (no genuine wallet-connect signal) — connectedChainId
-    // must reflect the real observed chain so wrong-network still fires.
+  it("connectedChainId defaults to the resolved chain, not the search hint, when there's no wallet-connect signal", async () => {
+    // The caller only asked for an allowance check (no walletConnectedChainId
+    // signal). Under the new spec, wallet.connectedChainId honestly
+    // defaults to the RESOLVED chain — where the tx actually is — not the
+    // search-hint chain. The wrong-network signal now surfaces as a
+    // networkNote (from dappExpectedChainId mismatching resolvedChainId),
+    // not as a WRONG_NETWORK verdict from the pipeline.
     const readers = mockReaders({
       findTransactionAcrossChains: async () => ({
         hash: "0x000000000000000000000000000000000000000000000000000000000000cafe",
@@ -150,18 +198,22 @@ describe("buildDiagnosisInput", () => {
       }),
     });
 
-    const { input } = await buildDiagnosisInput({
+    const { input, networkNote } = await buildDiagnosisInput({
       txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
-      expectedChainId: X_LAYER,
+      dappExpectedChainId: X_LAYER,
       allowanceCheck: { token: "0xtoken" as `0x${string}`, spender: "0xspender" as `0x${string}`, requiredAllowance: BigInt(1) },
       readers,
     });
 
+    expect(input.tx.chainId).toBe(ETH);
     expect(input.dappContext?.expectedChainId).toBe(X_LAYER);
-    expect(input.wallet.connectedChainId).toBe(ETH); // observed chain, not expectedChainId
-
+    expect(input.wallet.connectedChainId).toBe(ETH); // resolved chain, honestly
+    expect(networkNote?.foundOn).toBe(ETH);
+    expect(networkNote?.expected).toBe(X_LAYER);
+    // The diagnosis itself reflects what actually happened on Ethereum,
+    // NOT the terminal-WRONG_NETWORK behavior of the old spec.
     const diagnosis = diagnose(input);
-    expect(diagnosis.mode).toBe("WRONG_NETWORK");
+    expect(diagnosis.mode).not.toBe("WRONG_NETWORK");
   });
 
   it("does NOT falsely disable wrong-network detection when an allowance check is requested and the chain actually matches", async () => {
@@ -241,13 +293,12 @@ describe("buildDiagnosisInput", () => {
     expect(diagnosis.mode).not.toBe("NONCE_GAP");
   });
 
-  it("dappExpectedChainId lets a caller who already knows both facts trigger wrong-network via direct comparison, distinct from the search chain", async () => {
-    // Tx is genuinely found and succeeds on X_LAYER (the search chain,
-    // expectedChainId) — but the caller (e.g. the MCP tool) separately
-    // knows the dApp expected chain ETH. This must fire WRONG_NETWORK via
-    // the dappContext branch, without needing the cross-chain search
-    // fallback to find a mismatch (there isn't one — the tx really is on
-    // the searched chain; the mismatch is against the *dApp's* expectation).
+  it("dappExpectedChainId mismatch (against the resolved chain) surfaces as a networkNote, distinct from the search chain", async () => {
+    // Tx is genuinely found and succeeds on X_LAYER (the search chain) —
+    // but the caller (e.g. the MCP tool) separately declares the dApp
+    // expected ETH. Under Phase 1 spec §2a this is now a networkNote, not
+    // a terminal WRONG_NETWORK verdict; the underlying diagnosis reflects
+    // what actually happened on X_LAYER (a successful tx).
     const readers = mockReaders({
       findTransactionAcrossChains: async () => ({
         hash: "0x000000000000000000000000000000000000000000000000000000000000cafe",
@@ -266,19 +317,24 @@ describe("buildDiagnosisInput", () => {
       }),
     });
 
-    const { input } = await buildDiagnosisInput({
+    const { input, networkNote, resolvedChainId } = await buildDiagnosisInput({
       txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
       expectedChainId: X_LAYER, // search chain — where the tx actually is
       dappExpectedChainId: ETH, // dApp's separate stated expectation
       readers,
     });
 
+    expect(resolvedChainId).toBe(X_LAYER);
     expect(input.wallet.connectedChainId).toBe(X_LAYER);
     expect(input.dappContext?.expectedChainId).toBe(ETH);
+    expect(networkNote).toEqual({
+      foundOn: X_LAYER,
+      expected: ETH,
+      message: expect.stringContaining(`chain ${X_LAYER}`),
+    });
 
     const diagnosis = diagnose(input);
-    expect(diagnosis.mode).toBe("WRONG_NETWORK");
-    expect(diagnosis.ruleTriggered).toBe("wrongNetwork:dappContextMismatch");
+    expect(diagnosis.mode).not.toBe("WRONG_NETWORK");
   });
 
   it("dappExpectedChainId defaults to expectedChainId when omitted, preserving prior single-chain-concept behavior", async () => {
@@ -327,15 +383,10 @@ describe("buildDiagnosisInput", () => {
   it("regression: a wrong search-target chainId must not spuriously fire the nonce rule when dappContext independently confirms no wrong-network problem", async () => {
     // Reproduces a real bug found via live MCP testing: caller passes
     // expectedChainId=ETH (a wrong guess about where to search) and
-    // dappExpectedChainId=X_LAYER, for a tx that's actually on X_LAYER. The
-    // dappContext check correctly finds no mismatch (wallet.connectedChainId
-    // ends up X_LAYER, matching dappContext.expectedChainId=X_LAYER) — but
-    // an earlier version of this function still forced tx.status to
-    // "not_found" whenever the search-target chain didn't match where the
-    // tx was actually found, regardless of whether dappContext already
-    // resolved the question. That forced "not_found" then spuriously
-    // satisfied the nonce rule's trigger condition and fired
-    // NONCE_ALREADY_USED for a transaction with no real problem at all.
+    // dappExpectedChainId=X_LAYER, for a tx that's actually on X_LAYER.
+    // Under Phase 1 spec §2a, chain resolution always uses the tx's
+    // ACTUAL chain (X_LAYER here); real status flows through; no
+    // networkNote fires because resolvedChainId === dappExpectedChainId.
     const readers = mockReaders({
       findTransactionAcrossChains: async () => ({
         hash: "0x000000000000000000000000000000000000000000000000000000000000cafe",
@@ -356,25 +407,26 @@ describe("buildDiagnosisInput", () => {
         ({
           chainId: X_LAYER,
           address: "0xfrom",
-          latestNonce: 10, // deliberately higher than tx.nonce=5, so the old bug's forced "not_found" would trigger NONCE_ALREADY_USED
+          latestNonce: 10, // deliberately higher than tx.nonce=5, so an old bug's forced "not_found" would trigger NONCE_ALREADY_USED
           pendingNonce: 10,
           hasGap: false,
           hasPendingBacklog: false,
         }) as NonceContext,
     });
 
-    const { input } = await buildDiagnosisInput({
+    const { input, networkNote, resolvedChainId } = await buildDiagnosisInput({
       txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
       expectedChainId: ETH, // wrong guess about where to search
       dappExpectedChainId: X_LAYER, // matches where it's actually found
       readers,
     });
 
-    // dappContext resolves cleanly: wallet ended up right where the dApp expected.
+    expect(resolvedChainId).toBe(X_LAYER);
+    expect(input.tx.chainId).toBe(X_LAYER); // honest resolved chain, not the wrong search hint
     expect(input.wallet.connectedChainId).toBe(X_LAYER);
     expect(input.dappContext?.expectedChainId).toBe(X_LAYER);
-    // The real status (success) must flow through, not a forced "not_found".
-    expect(input.tx.status).toBe("success");
+    expect(input.tx.status).toBe("success"); // real status flows through
+    expect(networkNote).toBeUndefined(); // resolved chain matches dApp expectation
 
     const diagnosis = diagnose(input);
     expect(diagnosis.mode).not.toBe("WRONG_NETWORK");

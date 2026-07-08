@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, Events } from "discord.js";
-import { diagnoseTransaction, diagnoseApprovals, diagnoseBridge, X_LAYER_MAINNET_ID, ETHEREUM_MAINNET_ID } from "@support-agent-asp/agent-core";
+import { diagnoseTransaction, diagnoseApprovals, diagnoseBridge, safeErrorMessage, X_LAYER_MAINNET_ID, ETHEREUM_MAINNET_ID } from "@support-agent-asp/agent-core";
 import type { Hash, Hex } from "viem";
 import { diagnosisToEmbed } from "./format.js";
 
@@ -64,9 +64,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
   } catch (err) {
-    await interaction.editReply({
-      content: `Couldn't complete that: ${err instanceof Error ? err.message : "unknown error"}`,
-    });
+    const message = safeErrorMessage(err, "Couldn't complete that — an unexpected error occurred.", "Discord command failed:");
+    await interaction.editReply({ content: message });
   }
 });
 

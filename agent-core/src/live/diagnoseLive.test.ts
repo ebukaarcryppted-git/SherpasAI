@@ -129,12 +129,13 @@ describe("diagnoseLive", () => {
     expect(result.ruleTriggered).not.toBe("diagnoseLive:successNoRuleMatched");
   });
 
-  it("regression: a tx that succeeded on a DIFFERENT chain than expected must report WRONG_NETWORK, not NOT_A_FAILURE", async () => {
-    // Reproduces a real bug found via live testing: a real Ethereum tx
-    // queried with expectedChainId=X Layer was misreported as healthy,
-    // because buildDiagnosisInput passed through the tx's real ("success")
-    // status instead of "not_found", so classify.ts's wrong-network
-    // fallback (which only triggers on not_found) never even ran.
+  it("Phase 1 spec §2a: a tx that succeeded on a different chain than the dApp expected surfaces a networkNote alongside the real diagnosis", async () => {
+    // Under the new spec, "found on Ethereum, dApp expected X Layer" is
+    // no longer a terminal WRONG_NETWORK verdict that hides the real
+    // diagnosis — it's a networkNote attached to whatever actually
+    // happened on Ethereum. Here the tx succeeded cleanly on Ethereum,
+    // so the primary mode is NOT_A_FAILURE (honest) with the
+    // network mismatch surfaced as an informational note.
     const ETH = 1;
     const readers = mockReaders({
       findTransactionAcrossChains: async () => ({
@@ -142,7 +143,7 @@ describe("diagnoseLive", () => {
         foundOn: [
           {
             found: true,
-            chainId: ETH, // found on Ethereum, NOT the expected X Layer
+            chainId: ETH, // found on Ethereum, dApp expected X Layer
             hash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
             status: "success",
             from: "0xfrom" as `0x${string}`,
@@ -157,12 +158,20 @@ describe("diagnoseLive", () => {
 
     const result = await diagnoseLive({
       txHash: "0x000000000000000000000000000000000000000000000000000000000000cafe" as `0x${string}`,
-      expectedChainId: X_LAYER,
+      expectedChainId: X_LAYER, // search hint
+      dappExpectedChainId: X_LAYER, // dApp's declared expectation — mismatches Ethereum
       readers,
     });
 
-    expect(result.mode).toBe("WRONG_NETWORK");
-    expect(result.healthy).toBeUndefined();
+    // The tx really did succeed on Ethereum — the honest report is
+    // NOT_A_FAILURE with a networkNote, NOT WRONG_NETWORK-as-terminal.
+    expect(result.mode).toBe("NOT_A_FAILURE");
+    expect(result.healthy).toBe(true);
+    expect(result.networkNote).toEqual({
+      foundOn: ETH,
+      expected: X_LAYER,
+      message: expect.stringContaining(`chain ${ETH}`),
+    });
   });
 
   it("attaches a supplementary wrong-network signal note when revert data is empty and the target has no code", async () => {

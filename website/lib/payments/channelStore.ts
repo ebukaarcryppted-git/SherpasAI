@@ -26,7 +26,33 @@ export interface ChannelState {
 const STORE_PATH =
   process.env.MPP_CHANNEL_STORE_PATH ?? path.join(/* turbopackIgnore: true */ process.cwd(), ".mpp-channel-state.json");
 
+/**
+ * Fires once per process on a platform where this file-backed store is
+ * known to misbehave: ephemeral/serverless filesystems either don't
+ * persist writes between invocations (silently re-opening a fresh
+ * on-chain channel — a real new deposit — on every cold start) or aren't
+ * shared across concurrent instances (no locking here, so concurrent opens
+ * can race). This can't be fixed without swapping in a real shared
+ * datastore (Redis/Postgres); the goal here is just to make sure that
+ * requirement is loud and can't ship unnoticed.
+ */
+let warnedAboutServerless = false;
+function warnIfServerlessLikely(): void {
+  if (warnedAboutServerless) return;
+  const looksServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+  if (!looksServerless) return;
+  warnedAboutServerless = true;
+  console.error(
+    "[diagnose-proxy] WARNING: MPP channel state is file-backed (channelStore.ts) but this looks like a " +
+      "serverless/ephemeral-filesystem deployment. Writes may not persist between invocations or across " +
+      "concurrent instances, which can cause repeated real on-chain channel deposits or lost spend tracking. " +
+      "Swap in a real shared datastore (Redis/Postgres) before relying on this in production, or set " +
+      "MPP_CHANNEL_STORE_PATH to a genuinely persistent, shared path."
+  );
+}
+
 export async function loadChannelState(): Promise<ChannelState | null> {
+  warnIfServerlessLikely();
   try {
     const text = await readFile(STORE_PATH, "utf8");
     return JSON.parse(text) as ChannelState;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decodeRevertReason, diagnose } from "./classify.js";
+import { classifyWrongNetwork, decodeRevertReason, diagnose } from "./classify.js";
 import * as fx from "./classify.fixtures.js";
 
 describe("slippage revert (3.4)", () => {
@@ -44,23 +44,38 @@ describe("insufficient allowance (3.5)", () => {
   });
 });
 
-describe("wrong network (3.1)", () => {
-  it("classifies a dappContext/wallet chain mismatch with high confidence", () => {
+// Per Phase 1 spec §2a: WRONG_NETWORK is no longer part of the diagnose()
+// priority pipeline — chain resolution happens in the pipeline caller
+// (buildDiagnosisInput) and a mismatch surfaces as a `networkNote` attached
+// to whatever real diagnosis the pipeline produced. classifyWrongNetwork
+// itself is still exported as a pure rule for callers that specifically
+// want the old terminal-verdict behavior (e.g. pre-flight validation), so
+// these tests target it directly rather than going through diagnose().
+describe("wrong network (§3.1, now a standalone rule, not a pipeline step)", () => {
+  it("classifyWrongNetwork still flags a dappContext/wallet chain mismatch with high confidence", () => {
+    const result = classifyWrongNetwork(fx.wrongNetworkDappMismatch);
+    expect(result?.mode).toBe("WRONG_NETWORK");
+    expect(result?.ruleTriggered).toBe("wrongNetwork:dappContextMismatch");
+    expect(result?.confidence).toBeCloseTo(0.95);
+  });
+
+  it("classifyWrongNetwork still falls back to a cross-chain lookup when there's no dappContext and the tx isn't found", () => {
+    const result = classifyWrongNetwork(fx.wrongNetworkCrossChainFound, fx.wrongNetworkCrossChainDeps);
+    expect(result?.mode).toBe("WRONG_NETWORK");
+    expect(result?.ruleTriggered).toBe("wrongNetwork:crossChainFallback");
+    expect(result?.confidence).toBeCloseTo(0.7);
+  });
+
+  it("classifyWrongNetwork does not force a classification when the fallback lookup finds nothing", () => {
+    const result = classifyWrongNetwork(fx.wrongNetworkCrossChainFound, { crossChainLookup: () => null });
+    expect(result).toBeNull();
+  });
+
+  it("diagnose() itself no longer returns WRONG_NETWORK — a chain mismatch is now a networkNote attached by the caller", () => {
+    // Same fixture that used to fire WRONG_NETWORK as step 1 of the
+    // pipeline; under the new spec it must fall through to whatever the
+    // fixture's actual state classifies as (nonce/gas/no-rule-matched).
     const result = diagnose(fx.wrongNetworkDappMismatch);
-    expect(result.mode).toBe("WRONG_NETWORK");
-    expect(result.ruleTriggered).toBe("wrongNetwork:dappContextMismatch");
-    expect(result.confidence).toBeCloseTo(0.95);
-  });
-
-  it("falls back to a cross-chain lookup when there's no dappContext and the tx isn't found", () => {
-    const result = diagnose(fx.wrongNetworkCrossChainFound, fx.wrongNetworkCrossChainDeps);
-    expect(result.mode).toBe("WRONG_NETWORK");
-    expect(result.ruleTriggered).toBe("wrongNetwork:crossChainFallback");
-    expect(result.confidence).toBeCloseTo(0.7);
-  });
-
-  it("does not force a wrong-network classification when the fallback lookup finds nothing", () => {
-    const result = diagnose(fx.wrongNetworkCrossChainFound, { crossChainLookup: () => null });
     expect(result.mode).not.toBe("WRONG_NETWORK");
   });
 });
@@ -175,15 +190,20 @@ describe("decodeRevertReason", () => {
 });
 
 describe("priority order (section 2)", () => {
-  it("wrong network short-circuits before nonce/gas/slippage checks even run", () => {
-    // Reverted tx that WOULD look like a slippage revert, but wallet is on the wrong chain.
+  it("Phase 1 spec §2a: diagnose() runs the real pipeline on the resolved chain — a dApp chain mismatch no longer skips it", () => {
+    // A reverted tx that fires SLIPPAGE_REVERT. Under the old spec, a
+    // dappContext chain mismatch would have terminally classified it as
+    // WRONG_NETWORK; under the new spec, chain resolution is not a
+    // pipeline step and the real slippage diagnosis wins. (The pipeline
+    // caller — buildDiagnosisInput/diagnoseLive — attaches a networkNote
+    // for the mismatch; classify.ts itself doesn't and shouldn't.)
     const input = {
       ...fx.slippageDecodable,
       wallet: { ...fx.slippageDecodable.wallet, connectedChainId: 1 },
       dappContext: { expectedChainId: 196 },
     };
     const result = diagnose(input);
-    expect(result.mode).toBe("WRONG_NETWORK");
+    expect(result.mode).toBe("SLIPPAGE_REVERT");
   });
 
   it("nonce issues are resolved before gas is ever evaluated", () => {

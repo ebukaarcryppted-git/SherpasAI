@@ -1,17 +1,32 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, DM_Sans, Fira_Code } from "next/font/google";
+import { Squada_One, Manrope, Titan_One, Fira_Code } from "next/font/google";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
+/**
+ * SK-Modernist -> Manrope (clean modern grotesk, same body-text role).
+ * "Glitz" wordmark (SHERPAS AGENT ASP) -> Titan One — Glitz itself is a
+ * paid commercial display face; Titan One is the closest free equivalent
+ * on Google Fonts (chunky, rounded, heavy balloon-shaped letterforms).
+ * Every other file only references the --font-heading/--font-body/
+ * --font-wordmark variables below, so a future swap to the licensed
+ * Glitz .woff2 files is a one-line change in globals.css.
+ */
+const squadaOne = Squada_One({
+  variable: "--font-squada-one",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["400"],
 });
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const titanOne = Titan_One({
+  variable: "--font-titan-one",
+  subsets: ["latin"],
+  weight: ["400"],
 });
 
 const firaCode = Fira_Code({
@@ -21,9 +36,9 @@ const firaCode = Fira_Code({
 });
 
 export const metadata: Metadata = {
-  title: "Sherpas Agent ASP — Diagnose failed transactions on X Layer",
+  title: "Sherpas Agent ASP — Diagnose failed transactions on Ethereum & X Layer",
   description:
-    "Paste a transaction hash. Get a plain-language diagnosis of why it failed and how to fix it, read straight from X Layer chain data.",
+    "Paste a transaction hash. Get a plain-language diagnosis of why it failed and how to fix it, read straight from live Ethereum and X Layer chain data.",
 };
 
 export default function RootLayout({
@@ -34,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${dmSans.variable} ${firaCode.variable} h-full antialiased`}
+      className={`${squadaOne.variable} ${manrope.variable} ${titanOne.variable} ${firaCode.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-bg text-text font-body">
         {children}

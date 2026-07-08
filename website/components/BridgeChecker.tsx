@@ -38,13 +38,21 @@ export function BridgeChecker() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hash: hash.trim(), recipient: recipient.trim() }),
+        signal: AbortSignal.timeout(20_000),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Bridge check failed.");
       setResult(data as BridgeDiagnosisJSON);
       setStatus("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      setError(
+        timedOut
+          ? "This is taking too long — the chain RPC isn't responding. Try again in a moment."
+          : err instanceof Error
+            ? err.message
+            : "Something went wrong."
+      );
       setStatus("error");
     }
   }
@@ -66,29 +74,29 @@ export function BridgeChecker() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-3">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-elevated px-4 py-3.5 focus-within:border-primary transition-colors duration-200">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <IconBridge className="h-4 w-4 shrink-0 text-text-faint" />
             <input
               value={hash}
               onChange={(e) => setHash(e.target.value)}
               placeholder="0x… source-chain transaction hash"
               aria-label="Source transaction hash"
-              className="w-full bg-transparent font-mono text-sm text-text placeholder:text-text-faint focus:outline-none"
+              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-elevated px-4 py-3.5 focus-within:border-primary transition-colors duration-200">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <input
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
               placeholder="0x… recipient address on the destination chain"
               aria-label="Recipient address"
-              className="w-full bg-transparent font-mono text-sm text-text placeholder:text-text-faint focus:outline-none"
+              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={status === "loading"}
-            className="cursor-pointer flex w-full items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-6 py-3.5 font-heading text-sm font-bold text-bg transition-colors duration-200 hover:bg-primary-hover hover:border-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="cursor-pointer flex w-full items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg shadow-[0_0_32px_-6px_rgba(198,226,79,0.55)] transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 hover:shadow-[0_0_40px_-4px_rgba(198,226,79,0.75)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {status === "loading" ? "Checking both chains…" : "Check bridge status"}
             {status !== "loading" && <IconArrowRight className="h-4 w-4" />}
@@ -96,29 +104,29 @@ export function BridgeChecker() {
         </form>
 
         {status === "error" && (
-          <div className="mt-8 rounded-xl border border-danger p-6">
+          <div className="mt-8 rounded-2xl border border-danger bg-bg-elevated/70 p-6 backdrop-blur-md">
             <div className="flex items-center gap-2 text-danger">
               <IconAlert className="h-4 w-4" />
-              <span className="font-heading text-sm font-bold">Couldn&apos;t check status</span>
+              <span className="font-heading text-base font-bold">Couldn&apos;t check status</span>
             </div>
             <p className="mt-2 font-body text-sm text-text-muted">{error}</p>
           </div>
         )}
 
         {status === "done" && result && (
-          <div className={`mt-8 overflow-hidden rounded-xl border ${tone} bg-bg-elevated`}>
+          <div className={`mt-8 overflow-hidden rounded-2xl border ${tone} bg-bg-elevated/70 backdrop-blur-md shadow-[0_0_40px_-16px_rgba(198,226,79,0.25)]`}>
             <div className={`flex items-center gap-2 border-b border-border px-6 py-4 ${tone}`}>
               {result.details.Status === "likely_completed" ? (
                 <IconCheck className="h-4 w-4" />
               ) : (
                 <IconAlert className="h-4 w-4" />
               )}
-              <span className="font-heading text-sm font-bold tracking-wide">
+              <span className="font-heading text-base font-bold tracking-wide">
                 {result.details.Status?.replace(/_/g, " ").toUpperCase()}
               </span>
             </div>
             <div className="px-6 py-6">
-              <p className="font-heading text-lg font-bold leading-snug text-text">
+              <p className="font-heading text-xl font-bold leading-snug text-text">
                 {result.headline}
               </p>
               <div className="mt-5 rounded-lg border border-border bg-primary-soft/40 p-4">

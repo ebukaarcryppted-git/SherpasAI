@@ -3,6 +3,7 @@ export { diagnoseTransaction } from "./diagnoseTransaction.js";
 export { diagnoseApprovals, type ApprovalReport } from "./diagnoseApprovals.js";
 export { diagnoseBridge } from "./diagnoseBridge.js";
 export { getWalletSummary } from "./walletOverview.js";
+export { safeErrorMessage } from "./safeError.js";
 
 // Phase 1 pure rule-based classifier (spec: Phase 1 Diagnosis Engine doc).
 // Namespaced to avoid colliding with the live-RPC Diagnosis/FailureMode
