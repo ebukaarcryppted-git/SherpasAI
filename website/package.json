@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build --prefix ../onchain-reader && npm run build --prefix ../agent-core && npm run build --prefix ../widget && next build",
+    "build:next-only": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run"
