@@ -3,6 +3,20 @@ node_modules/
 .pnp
 .pnp.js
 
+# package-lock.json is intentionally NOT committed. This repo has several
+# native-binary optional dependencies (lightningcss, @next/swc-*, esbuild,
+# sharp) whose platform-specific variants npm only records resolved
+# metadata for on whichever OS generated the lockfile (a long-standing,
+# still-open npm limitation: https://github.com/npm/cli/issues/4828). All
+# local dev here happens on Windows, but Vercel builds on Linux — a
+# Windows-generated lockfile causes Vercel's install to reuse the frozen
+# (wrong-platform) resolution and fail with "Cannot find module
+# '.../<pkg>.linux-x64-gnu.node'". Leaving no lockfile forces every
+# install to resolve fresh for whichever platform is actually running it,
+# which is correct on all of them. Costs exact cross-machine
+# reproducibility; that trade-off is deliberate here.
+package-lock.json
+
 # Build output
 dist/
 build/
