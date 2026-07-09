@@ -42,11 +42,7 @@ export function Hero() {
           style={{ animationDelay: "80ms" }}
         >
           <WaveText>{"Know why your transaction failed."}</WaveText>{" "}
-          <span className="inline-flex flex-wrap items-baseline gap-x-2">
-            <span className="font-mono text-primary">{"{"}</span>
-            <WaveText className="text-primary">In three seconds.</WaveText>
-            <span className="font-mono text-primary">{"}"}</span>
-          </span>
+          <span className="text-primary"><span className="font-mono">{"{"}</span><WaveText className="text-primary">In three seconds.</WaveText><span className="font-mono">{"}"}</span></span>
         </h1>
 
         <p
