@@ -41,8 +41,8 @@ export function Hero() {
           className="animate-fade-up max-w-5xl font-heading text-6xl font-bold uppercase leading-[1.03] tracking-tight text-text sm:text-7xl md:text-[5.5rem]"
           style={{ animationDelay: "80ms" }}
         >
-          <WaveText>{"Know why your transaction failed."}</WaveText>{" "}
-          <span className="text-primary"><span className="font-mono">{"{"}</span><WaveText className="text-primary">In three seconds.</WaveText><span className="font-mono">{"}"}</span></span>
+          <WaveText>{"Know why your transaction failed."}</WaveText>
+          <span className="block text-primary"><span className="font-mono">{"{"}</span><WaveText className="text-primary">In three seconds.</WaveText><span className="font-mono">{"}"}</span></span>
         </h1>
 
         <p
