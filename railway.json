@@ -1,0 +1,6 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "npm run build --workspace=@support-agent-asp/onchain-reader && npm run build --workspace=@support-agent-asp/agent-core && npm run build --workspace=@support-agent-asp/discord-bot"
+  }
+}
