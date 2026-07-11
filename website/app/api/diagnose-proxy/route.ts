@@ -13,15 +13,49 @@ import { checkRateLimit, getClientIp, rateLimitResponseInit } from "@/lib/rateLi
  *
  * This route spends real funds from DIAGNOSIS_PAYER_PRIVATE_KEY on every
  * accepted request and has no other authentication of its own — the rate
- * limit below is the only thing standing between "visitor uses the support
- * widget" (intended) and "anyone who finds this URL drains the wallet"
- * (not intended). Tune DIAGNOSE_PROXY_RATE_LIMIT_PER_MINUTE down further if
- * your actual expected traffic is lower than this default.
+ * limit and the diagnose_transaction shape check below are the only things
+ * standing between "visitor uses the support widget" (intended) and
+ * "anyone who finds this URL drains the wallet" (not intended). Tune
+ * DIAGNOSE_PROXY_RATE_LIMIT_PER_MINUTE down further if your actual expected
+ * traffic is lower than this default.
  *
  * Required env vars: DIAGNOSIS_PAYER_PRIVATE_KEY, MPP_CURRENCY, MPP_RECIPIENT,
  * MCP_SERVER_URL. See website/.env.example.
  */
 const RATE_LIMIT_PER_MINUTE = Number(process.env.DIAGNOSE_PROXY_RATE_LIMIT_PER_MINUTE ?? 5);
+
+const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
+
+/**
+ * This route pays real funds for every request it forwards, so it must not
+ * pay for anything other than a well-formed diagnose_transaction call — a
+ * caller sending an arbitrary/garbage body would otherwise still get
+ * charged, since the payment gate on the other end charges per accepted
+ * request, not per successful diagnosis. Mirrors DiagnoseInputSchema in
+ * sherpas-support-mcp-server/src/tools/diagnose.ts.
+ */
+function isValidDiagnoseRequest(body: unknown): body is {
+  id?: unknown;
+  method: "tools/call";
+  params: { name: "diagnose_transaction"; arguments: { txHash: string; chainId: number; expectedChainId?: number } };
+} {
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as Record<string, unknown>;
+  if (b.method !== "tools/call") return false;
+
+  const params = b.params as Record<string, unknown> | undefined;
+  if (!params || params.name !== "diagnose_transaction") return false;
+
+  const args = params.arguments as Record<string, unknown> | undefined;
+  if (!args || typeof args.txHash !== "string" || !TX_HASH_RE.test(args.txHash)) return false;
+  if (typeof args.chainId !== "number" || !Number.isInteger(args.chainId) || args.chainId <= 0) return false;
+  if (args.expectedChainId !== undefined) {
+    if (typeof args.expectedChainId !== "number" || !Number.isInteger(args.expectedChainId) || args.expectedChainId <= 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
@@ -49,6 +83,17 @@ export async function POST(req: NextRequest) {
   if (!body) {
     return NextResponse.json(
       { jsonrpc: "2.0", error: { code: -32700, message: "Invalid JSON" }, id: null },
+      { status: 400 }
+    );
+  }
+
+  if (!isValidDiagnoseRequest(body)) {
+    return NextResponse.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32602, message: "Request must be a tools/call for diagnose_transaction with a valid txHash and chainId." },
+        id: (body as { id?: unknown } | null)?.id ?? null,
+      },
       { status: 400 }
     );
   }

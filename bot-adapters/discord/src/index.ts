@@ -2,11 +2,14 @@ import { Client, GatewayIntentBits, Events } from "discord.js";
 import { diagnoseTransaction, diagnoseApprovals, diagnoseBridge, safeErrorMessage, X_LAYER_MAINNET_ID, ETHEREUM_MAINNET_ID } from "@support-agent-asp/agent-core";
 import type { Hash, Hex } from "viem";
 import { diagnosisToEmbed } from "./format.js";
+import { checkRateLimit } from "./rateLimit.js";
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
   throw new Error("Set DISCORD_TOKEN in the environment before starting the bot.");
 }
+
+const RATE_LIMIT_PER_MINUTE = Number(process.env.DISCORD_RATE_LIMIT_PER_MINUTE ?? 5);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -16,6 +19,15 @@ client.once(Events.ClientReady, (c) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
+  const rateLimit = checkRateLimit(`discord:${interaction.user.id}`, RATE_LIMIT_PER_MINUTE);
+  if (!rateLimit.allowed) {
+    await interaction.reply({
+      content: `Too many requests — please wait ${rateLimit.retryAfterSeconds ?? 60}s and try again.`,
+      ephemeral: true,
+    });
+    return;
+  }
 
   await interaction.deferReply();
 
@@ -78,6 +90,9 @@ client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   const content = message.content.trim();
   if (!TX_HASH_RE.test(content)) return;
+
+  const rateLimit = checkRateLimit(`discord:${message.author.id}`, RATE_LIMIT_PER_MINUTE);
+  if (!rateLimit.allowed) return; // stay silent, same as the "fails to resolve" case below
 
   try {
     const diagnosis = await diagnoseTransaction(content, X_LAYER_MAINNET_ID);

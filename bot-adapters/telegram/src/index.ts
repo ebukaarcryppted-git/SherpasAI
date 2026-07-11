@@ -9,15 +9,31 @@ import {
 } from "@support-agent-asp/agent-core";
 import type { Hash, Hex } from "viem";
 import { diagnosisToMessage, approvalsToMessage } from "./format.js";
+import { checkRateLimit } from "./rateLimit.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) {
   throw new Error("Set TELEGRAM_BOT_TOKEN in the environment before starting the bot.");
 }
 
+const RATE_LIMIT_PER_MINUTE = Number(process.env.TELEGRAM_RATE_LIMIT_PER_MINUTE ?? 5);
+
 const bot = new Telegraf(token);
 
+/** Returns false (and replies with a slow-down message) if the caller is over the per-user limit. */
+async function withinRateLimit(ctx: Context): Promise<boolean> {
+  const key = `telegram:${ctx.from?.id ?? ctx.chat?.id ?? "unknown"}`;
+  const rateLimit = checkRateLimit(key, RATE_LIMIT_PER_MINUTE);
+  if (!rateLimit.allowed) {
+    await ctx.reply(`Too many requests — please wait ${rateLimit.retryAfterSeconds ?? 60}s and try again.`);
+    return false;
+  }
+  return true;
+}
+
 bot.command("diagnose", async (ctx) => {
+  if (!(await withinRateLimit(ctx))) return;
+
   const txHash = ctx.message.text.split(/\s+/)[1];
   if (!txHash) {
     await ctx.reply("Usage: /diagnose <tx_hash>");
@@ -27,6 +43,8 @@ bot.command("diagnose", async (ctx) => {
 });
 
 bot.command("approvals", async (ctx) => {
+  if (!(await withinRateLimit(ctx))) return;
+
   const parts = ctx.message.text.split(/\s+/).slice(1);
   const [address, tokenList] = parts;
   if (!address || !tokenList) {
@@ -44,6 +62,8 @@ bot.command("approvals", async (ctx) => {
 });
 
 bot.command("bridge", async (ctx) => {
+  if (!(await withinRateLimit(ctx))) return;
+
   const [txHash, recipient] = ctx.message.text.split(/\s+/).slice(1);
   if (!txHash || !recipient) {
     await ctx.reply("Usage: /bridge <source_tx_hash> <recipient_address>");
@@ -70,6 +90,10 @@ const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 bot.on("text", async (ctx, next) => {
   const content = ctx.message.text.trim();
   if (!TX_HASH_RE.test(content)) return next();
+
+  const key = `telegram:${ctx.from?.id ?? ctx.chat?.id ?? "unknown"}`;
+  if (!checkRateLimit(key, RATE_LIMIT_PER_MINUTE).allowed) return; // stay silent, same as an unresolved hash
+
   await respondWithDiagnosis(ctx, content);
 });
 
