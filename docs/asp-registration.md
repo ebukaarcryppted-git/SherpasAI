@@ -17,30 +17,32 @@ updates, activation/deactivation, and avatar upload.
 
 To register this agent as an ASP:
 - Role: **ASP / Provider** (not User, not Evaluator)
-- Services to list: `diagnose_transaction`, `check_wallet_approvals`,
-  `check_bridge_status`, `get_wallet_overview` — these map directly to the
-  MCP tools in `mcp-server/src/index.ts`
-- Endpoint: wherever `mcp-server` (or an HTTP wrapper around it) ends up
+- Services to list: `diagnose_transaction` — the only tool actually exposed
+  over MCP (`sherpas-support-mcp-server/src/index.ts` registers just this
+  one). Wallet-approval, bridge-status, and wallet-overview reads exist in
+  `onchain-reader` and are used by the website's own API routes, but are not
+  (yet) exposed as separate MCP tools — don't list them as callable services
+  until that changes.
+- Endpoint: wherever `sherpas-support-mcp-server`'s HTTP transport ends up
   deployed
 
 Run `/okx-agent-identity` (or ask for it directly) when you're ready — it
 needs your wallet to sign the registration transaction.
 
-## 2. Wire up payment settlement
+## 2. Payment settlement (already wired up)
 
-Once registered, calls to this ASP get metered and paid via OKX.AI's Agent
-Payments Protocol (x402 / MPP), not a subscription. The `okx-agent-payments-protocol`
-skill covers the flows relevant here:
-- **x402 (exact or upto)**: simplest fit for "pay per diagnosis" — a
-  caller's request to `diagnose_transaction` gets a 402 + payment
-  requirement, they pay, the call proceeds.
-- **MPP session/channel**: better fit if a protocol's own support bot is
-  going to call this ASP frequently (e.g. every ticket) — open a channel
-  once, settle in batches instead of per-call.
-
-Flat fee per diagnosis (as scoped in the original project brief) maps
-cleanly onto x402 `exact`. Start there; move to MPP only if per-call
-overhead becomes a real cost at volume.
+This part is done, not a future decision — `diagnose_transaction` is
+metered and gated via OKX onchainOS's **MPP session** protocol (escrow
+channel + off-chain signed voucher, not a per-call on-chain charge or a
+subscription): `sherpas-support-mcp-server/src/payments/` on the seller
+side, `website/lib/payments/` on the buyer side. Current price is $0.03 per
+diagnosis in USD₮0 on X Layer (`payments/pricing.ts`). See
+[`docs/USAGE.md`'s Payments section](USAGE.md#payments) for the actual
+integration flow, and the root README's [Payments —
+pay-as-you-go](../README.md#payments--pay-as-you-go) section for the
+rationale (MPP over x402 specifically, because a protocol's own support bot
+calling this ASP on every ticket amortizes far better as a channel than as
+a per-call charge).
 
 ## 3. Reputation
 
@@ -52,11 +54,12 @@ ASP before giving wallet-drain advice — see `components/Composability.tsx`
 on the website) depends on this identity existing, since that's what other
 agents look up to decide whether to hire it.
 
-## What's already built vs. what this step adds
+## What's already built vs. what registration adds
 
-| Already built | This step adds |
+| Already built | Registration (this doc) adds |
 |---|---|
 | Diagnosis logic (`agent-core`) | Onchain identity other agents can discover |
-| Callable interface (`mcp-server`) | Metered payment per call |
-| Embeddable UI (`widget`, `/embed`) | Reputation history |
-| Discord/Telegram integration | Discoverability in the OKX.AI agent marketplace |
+| Callable interface (`sherpas-support-mcp-server`) | Reputation history |
+| Metered payment per call (MPP session) | Discoverability in the OKX.AI agent marketplace |
+| Embeddable UI (`widget`, `/embed`) | |
+| Discord/Telegram integration | |

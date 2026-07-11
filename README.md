@@ -197,6 +197,15 @@ just local development:
 
 ---
 
+## Using it
+
+This README covers what the project is and how it's built. If you want to
+integrate it — embed the widget, call it as a paid MCP tool from your own
+agent, or run the Discord/Telegram bots — see
+**[`docs/USAGE.md`](docs/USAGE.md)**.
+
+---
+
 ## Quickstart
 
 ```bash

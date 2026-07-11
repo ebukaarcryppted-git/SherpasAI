@@ -5,9 +5,10 @@ they call `@support-agent-asp/agent-core` directly, so they share the exact
 same diagnosis logic as the website and the MCP server. No separate API
 deployment is required; these run standalone.
 
-Neither bot is deployed anywhere. Standing one up needs a bot token from the
-respective platform, which only you can create (they're tied to your
-Discord application / Telegram BotFather account).
+Standing up your own instance of either bot needs a bot token from the
+respective platform, which only you can create (they're tied to your own
+Discord application / Telegram BotFather account) — these aren't shared
+public bots.
 
 ## Discord (`bot-adapters/discord`)
 
@@ -45,4 +46,8 @@ Behavior:
 These are long-running processes (`bot.launch()` / Discord gateway
 connection), not serverless functions — run them on anything that keeps a
 Node process alive (a small VM, a container on Fly.io/Railway, etc.), not on
-Vercel's request-response functions.
+Vercel's request-response functions. See
+[`docs/USAGE.md`](../docs/USAGE.md#deploying-either-one-long-term) for the
+exact Railway setup this project uses (per-service `railway.json`, and why
+Root Directory must stay at the repo root for npm workspace resolution to
+work).
