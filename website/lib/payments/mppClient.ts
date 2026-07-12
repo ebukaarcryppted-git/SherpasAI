@@ -90,12 +90,11 @@ async function ensureChannelOpen(mcpServerUrl: string): Promise<ChannelState> {
   const depositAmount = BigInt(existing?.cumulativeAmount ?? "0") + BigInt(DIAGNOSIS_UNIT_PRICE_BASE_UNITS) * BigInt(100);
   const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600);
   const nonce = deriveOpenNonce({
+    from: payer.address,
     payee: recipient,
     token: currency,
     salt,
     authorizedSigner: zeroAddress,
-    splitRecipients: [],
-    splitBps: [],
   });
 
   const authorizationSignature = await signEip3009Authorization({

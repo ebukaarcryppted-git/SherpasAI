@@ -55,34 +55,33 @@ export function deriveChannelId(params: ChannelIdParams): Hex {
 }
 
 export interface OpenNonceParams {
+  from: Address;
   payee: Address;
   token: Address;
   salt: Hex;
   authorizedSigner: Address;
-  splitRecipients: Address[];
-  splitBps: number[];
 }
 
-/** EIP-3009 nonce for the channel-opening deposit authorization. */
+/**
+ * EIP-3009 nonce for the channel-opening deposit authorization.
+ *
+ * Per OKX support and the reference spec (tempoxyz/mpp-specs,
+ * draft-evm-session-00.md, "OpenWithAuthorization Nonce Derivation" and
+ * "Front-Running Protection"):
+ *   nonce = keccak256(abi.encode(from, payee, token, salt, authorizedSigner))
+ *
+ * NOTE: as of 2026-07, this formula does NOT reproduce the `expected` nonce
+ * OKX's own deployed X Layer escrow contract returns for a real request —
+ * confirmed by cross-validating the exact same encoding methodology against
+ * the (separately correct) channelId formula, which OKX's server accepts.
+ * Escalated back to OKX support with concrete repro values; this is the
+ * spec-correct implementation pending their reply, not yet a working one.
+ */
 export function deriveOpenNonce(params: OpenNonceParams): Hex {
   return keccak256(
     encodeAbiParameters(
-      [
-        { type: "address" },
-        { type: "address" },
-        { type: "bytes32" },
-        { type: "address" },
-        { type: "address[]" },
-        { type: "uint16[]" },
-      ],
-      [
-        params.payee,
-        params.token,
-        params.salt,
-        params.authorizedSigner,
-        params.splitRecipients,
-        params.splitBps.map((bps) => bps),
-      ]
+      [{ type: "address" }, { type: "address" }, { type: "address" }, { type: "bytes32" }, { type: "address" }],
+      [params.from, params.payee, params.token, params.salt, params.authorizedSigner]
     )
   );
 }
