@@ -1,6 +1,6 @@
 import { Challenge, Credential } from "@okxweb3/mpp";
 import { privateKeyToAccount } from "viem/accounts";
-import type { Address, Hex } from "viem";
+import { zeroAddress, type Address, type Hex } from "viem";
 import { deriveChannelId, deriveOpenNonce, signVoucher } from "./voucher";
 import { signEip3009Authorization } from "./eip3009";
 import { loadChannelState, newChannelState, randomSalt, saveChannelState, type ChannelState } from "./channelStore";
@@ -62,12 +62,17 @@ async function ensureChannelOpen(mcpServerUrl: string): Promise<ChannelState> {
   const { escrowContract, currency, recipient, tokenName, tokenVersion } = config();
   const salt = existing?.salt ?? randomSalt();
 
+  // authorizedSigner is for delegating channel management to a third party
+  // distinct from the payer — when the payer signs for themselves (this
+  // proxy's case), the protocol requires the zero address here, not the
+  // payer's own address, or the seller's verification rejects it with
+  // "authorizedSigner must not equal the payer".
   const channelId = deriveChannelId({
     payer: payer.address,
     payee: recipient,
     token: currency,
     salt,
-    authorizedSigner: payer.address,
+    authorizedSigner: zeroAddress,
     escrowContract,
     chainId: X_LAYER_CHAIN_ID,
   });
@@ -88,7 +93,7 @@ async function ensureChannelOpen(mcpServerUrl: string): Promise<ChannelState> {
     payee: recipient,
     token: currency,
     salt,
-    authorizedSigner: payer.address,
+    authorizedSigner: zeroAddress,
     splitRecipients: [],
     splitBps: [],
   });
@@ -125,7 +130,7 @@ async function ensureChannelOpen(mcpServerUrl: string): Promise<ChannelState> {
         nonce,
       },
       signature: authorizationSignature,
-      authorizedSigner: payer.address,
+      authorizedSigner: zeroAddress,
     },
     source: `did:pkh:eip155:${X_LAYER_CHAIN_ID}:${payer.address}`,
   });
