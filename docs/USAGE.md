@@ -173,41 +173,31 @@ for every possible `mode` value.
 
 ## Payments
 
-`diagnose_transaction` is gated behind OKX onchainOS's **MPP session**
-protocol — an escrow-channel-plus-off-chain-voucher model, not a per-call
-on-chain charge. Current price: **$0.03 per diagnosis**, in USD₮0 on X Layer
-(`sherpas-support-mcp-server/src/payments/pricing.ts`).
+`diagnose_transaction` is gated behind the **x402** protocol's "exact"
+scheme — a standalone upfront payment per call (402 challenge, buyer signs
+an EIP-3009 authorization, OKX's facilitator verifies and settles
+on-chain), not a channel or subscription. Current price: **$0.03 per
+diagnosis**, in USD₮0 on X Layer (`sherpas-support-mcp-server/src/payments/pricing.ts`).
+This is the scheme OKX.AI requires for A2MCP-listed services specifically —
+see [`docs/asp-registration.md`](asp-registration.md).
 
-If the server operator hasn't set the five required OKX/MPP env vars (see
+If the server operator hasn't set the four required env vars (see
 `sherpas-support-mcp-server/.env.example`), the tool serves **ungated and
 free** — this is a valid choice for local dev or a private deployment, but
 it's on you as the operator to decide whether to gate a public one.
 
-To pay and call a gated server from your own backend:
+To pay and call a gated server from your own agent, use OKX's x402 client
+SDK (`@okxweb3/x402-core/client` + `@okxweb3/x402-evm`'s `ExactEvmScheme`):
+sign an EIP-3009 `transferWithAuthorization` for the exact price, attach it
+to the retried request, and the server verifies + settles before serving
+the diagnosis. No channel to open, no persistent client-side state.
 
-1. **Open a channel once** — a one-time on-chain deposit into OKX's shared
-   MPP escrow contract on X Layer. A suggested deposit (~100 calls' worth)
-   is exported as `SUGGESTED_DEPOSIT_BASE_UNITS` in `pricing.ts`.
-2. **Every call after that is a signed off-chain voucher** — instant, zero
-   gas, no separate on-chain transaction per diagnosis.
-3. **Settle whenever** — the seller draws funds from the latest voucher on
-   close; unused deposit refunds.
-
-The reference implementation of the buyer side lives in
-[`website/lib/payments/`](../website/lib/payments) —
-`payAndDiagnose(mcpServerUrl, mcpRequestBody)` in `mppClient.ts` is the
-single entry point that handles opening a channel if needed, signing the
-voucher, and retrying the request with payment attached. The website's own
-`/api/diagnose-proxy` route (`website/app/api/diagnose-proxy/route.ts`) is a
-working example of wiring this into a server-held wallet so end users never
-see a payment prompt — copy that pattern if you're embedding the widget and
-want to pay on your users' behalf. Required env vars are documented in
-`website/.env.example`.
-
-If you're calling the MCP tool directly from your own autonomous agent
-rather than proxying for end users, you can open and manage the channel
-yourself using the same `voucher.ts`/`mppClient.ts` primitives, or OKX's own
-`@okxweb3/mpp` SDK directly.
+**Known gap:** the website's own buyer-side proxy
+(`website/app/api/diagnose-proxy`, `website/lib/payments/`) still speaks
+the older MPP session protocol as of this writing and hasn't yet been
+updated to match — it isn't a working x402 reference implementation right
+now. Treat the OKX SDK's own client examples as the source of truth until
+that's rewritten.
 
 ---
 
@@ -275,7 +265,7 @@ things matter for a clean Railway deploy:
 | Chain | ID | Notes |
 |---|---|---|
 | Ethereum mainnet | `1` | |
-| X Layer mainnet | `196` | MPP payment settlement happens here specifically |
+| X Layer mainnet | `196` | x402 payment settlement happens here specifically |
 | X Layer testnet | `1952` | Dev-only convenience |
 
 ## Rate limits & errors

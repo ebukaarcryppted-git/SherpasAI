@@ -114,7 +114,7 @@ diagnosis logic is written and tested exactly once.
 |---|---|
 | [`onchain-reader`](onchain-reader) | Thin, dependency-light layer over viem: finds a tx across chains, reads nonce/gas/allowance context, checks bridge status, scans wallet approvals, reads wallet balances. RPC calls have retry/backoff and a documented workaround for X Layer's unreliable `"pending"` block tag. |
 | [`agent-core`](agent-core) | The actual intelligence. `classify.ts` is a **pure, deterministic function** — fixture-tested, no network calls — that takes a structured `DiagnosisInput` and returns a `Diagnosis`. `live/` wires real `onchain-reader` calls into that input (`diagnoseLive`), adds quantified slippage math and bridge root-cause deepening on top of the classifier's output. |
-| [`sherpas-support-mcp-server`](sherpas-support-mcp-server) | Exposes `diagnose_transaction` as a Model Context Protocol tool over both stdio and streamable HTTP, so any MCP-aware agent (Claude, or a third-party autonomous agent) can call it directly. Gated pay-as-you-go via OKX onchainOS's MPP session protocol — see [Payments](#payments--pay-as-you-go) below. |
+| [`sherpas-support-mcp-server`](sherpas-support-mcp-server) | Exposes `diagnose_transaction` as a Model Context Protocol tool over both stdio and streamable HTTP, so any MCP-aware agent (Claude, or a third-party autonomous agent) can call it directly. Gated pay-as-you-go via the x402 protocol — see [Payments](#payments--pay-as-you-go) below. |
 | [`widget`](widget) | Embeddable support widget: a React component (npm) or a self-contained script-tag embed for non-React sites. Shadow-DOM isolated so host-page CSS can't leak in or out. Wires real wagmi/viem wallet actions (switch network, speed up, approve, retry-with-adjusted-slippage) for the failure modes that have a genuinely safe one-click fix — and is explicit, never faked, about the ones that don't (nonce conflicts, bridge-stuck). |
 | [`bot-adapters/discord`](bot-adapters/discord) & [`bot-adapters/telegram`](bot-adapters/telegram) | Drop a transaction hash into a support channel/chat, get the diagnosis back as a formatted message/embed — same `agent-core` engine underneath. |
 | [`website`](website) | Marketing site + a live, real-RPC diagnosis demo, plus `/widget-demo` (interactive fixture-driven demo of every widget failure-mode card) and `/embed` (the raw script-tag embed target). |
@@ -139,10 +139,12 @@ diagnosis logic is written and tested exactly once.
 - **MCP server** — `diagnose_transaction` callable over stdio (for local MCP
   clients) or streamable HTTP (for remote/agent callers), with a full Zod
   input/output schema and dual `content`/`structuredContent` responses.
-- **Pay-as-you-go payments** — the MCP tool is metered and gated via OKX
-  onchainOS's real MPP session protocol: an escrow channel opens once, then
-  every call is a zero-gas, off-chain signed voucher — no per-call on-chain
-  settlement. See [Payments](#payments--pay-as-you-go).
+- **Pay-as-you-go payments** — the MCP tool is metered and gated via the
+  **x402** protocol (OKX's `@okxweb3/x402-*` SDK, "exact" scheme on X
+  Layer): each call is a standalone upfront payment — 402 challenge, buyer
+  signs an EIP-3009 authorization, OKX's facilitator verifies and settles
+  on-chain. Required for OKX.AI A2MCP listing compliance — see
+  [Payments](#payments--pay-as-you-go).
 - **Embeddable widget** — React component or script-tag embed, Shadow-DOM
   isolated, dark near-monochrome design, wallet-connected one-click fixes
   for the failure modes that genuinely have one, honest hedging language
@@ -186,14 +188,14 @@ just local development:
   and `/api/mock-mcp` (fixture-driven, fabricated diagnoses for visually
   testing every widget card) return `404` whenever `NODE_ENV=production`
   unless you explicitly set `DEMO_ROUTES_ENABLED=true`.
-- **Known caveat, surfaced loudly rather than silently** — the MPP payment
-  channel's state (`website/lib/payments/channelStore.ts`) is file-backed
-  for simplicity, which doesn't hold up on serverless/ephemeral filesystems
-  or across multiple instances. If it detects it's running somewhere that
-  looks serverless (Vercel/Lambda/Netlify), it logs a loud warning rather
-  than silently risking repeated on-chain deposits or lost spend tracking —
-  swap in a real shared datastore (Redis/Postgres) before relying on this
-  under real multi-instance production traffic.
+- **Known transitional gap, surfaced loudly rather than silently** — the
+  seller side (`sherpas-support-mcp-server`) was switched from OKX's MPP
+  session protocol to x402, since A2MCP listings on OKX.AI require x402
+  specifically (MPP session doesn't qualify). The website's buyer-side proxy
+  (`website/app/api/diagnose-proxy`, `website/lib/payments/`) still speaks
+  the old MPP protocol as of this writing and needs an equivalent x402
+  client-side rewrite before it can pay the now-x402-only seller again —
+  tracked as follow-up work, not yet done.
 
 ---
 
@@ -249,35 +251,39 @@ and which MCP tools map to which listed services.
 
 ### Payments — pay-as-you-go
 
-`diagnose_transaction` is gated behind OKX onchainOS's real **MPP session**
-protocol (an escrow-channel + off-chain-voucher model — the genuine
-"Pay-as-you-go" primitive, not a generic one-shot x402 charge):
+`diagnose_transaction` is gated behind the **x402** protocol's "exact"
+scheme (OKX's `@okxweb3/x402-*` SDK, X Layer / `eip155:196`) — the standard
+OKX.AI requires for A2MCP-listed services:
 
-1. **Open** — a one-time on-chain deposit into a shared MPP escrow contract
-   on X Layer, in USD₮0.
-2. **Voucher** — every subsequent `diagnose_transaction` call just signs an
-   EIP-712 "cumulative spend so far is X" voucher — off-chain, instant,
-   zero gas.
-3. **Settle/close** — the seller submits the latest voucher on-chain
-   whenever it wants to draw funds; any unused deposit refunds on close.
+1. **Challenge** — an unpaid call gets back `402 Payment Required` with a
+   payment requirement (price, recipient, token, network).
+2. **Pay** — the caller signs a single EIP-3009 `transferWithAuthorization`
+   for the exact price and replays the request with the signed payload
+   attached — no channel, no persistent state.
+3. **Verify + settle** — OKX's facilitator (authenticated via
+   `OKX_API_KEY`/`OKX_SECRET_KEY`/`OKX_PASSPHRASE`) verifies the signature
+   and submits the on-chain settlement itself — the seller never needs its
+   own gas-funded signer wallet.
 
 This means:
-- **The end user never sees a payment prompt.** The embedding
-  protocol funds its own wallet and a small backend proxy
-  (`website/app/api/diagnose-proxy`) holds that key server-side, paying on
-  the widget's behalf — the private key never touches the browser.
-- **Any other agent can pay directly.** Because the gate lives on the MCP
-  server itself (not the widget), a third-party autonomous agent that
-  discovers this ASP can open its own channel and pay per call — the
-  diagnosis tool is a payable primitive any agent can use, not something
-  locked inside one product.
-- Pricing, channel state, and a simple accounting ledger (payer, amount,
-  which diagnosis it paid for) are all real, not mocked — see
-  `sherpas-support-mcp-server/src/payments/` and
-  `website/lib/payments/`.
+- **Any MCP-aware agent can pay directly.** Because the gate lives on the
+  MCP server itself, a third-party autonomous agent that discovers this ASP
+  just needs a wallet holding USD₮0 on X Layer — the diagnosis tool is a
+  payable primitive any agent can use, not something locked inside one
+  product.
+- **No self-managed settlement infrastructure.** Unlike a channel-based
+  protocol, the seller doesn't sign or submit anything on-chain itself —
+  OKX's facilitator does that, using the seller's own API credentials.
+- Pricing and a simple accounting ledger (payer, amount, tx hash) are real,
+  not mocked — see `sherpas-support-mcp-server/src/payments/`.
 
-Full env var reference: `sherpas-support-mcp-server/.env.example` (seller
-side) and `website/.env.example` (the widget-backend payer proxy).
+Full env var reference: `sherpas-support-mcp-server/.env.example`.
+
+**Buyer-side note:** the website's own widget-backend proxy
+(`website/app/api/diagnose-proxy`) still speaks the old MPP session
+protocol as of this writing and needs a matching x402 client-side rewrite
+before it can pay this now-x402-only seller — see the caveat under
+[Production hardening](#production-hardening).
 
 ### Composability
 
@@ -300,7 +306,7 @@ pitch as presented on the site.
   tests, voucher-signing interop tests)
 - **@modelcontextprotocol/sdk** for the MCP server (dual stdio + streamable
   HTTP transport)
-- **@okxweb3/mpp** for OKX onchainOS's real MPP session payment protocol
+- **@okxweb3/x402-core** / **@okxweb3/x402-evm** for OKX's x402 payment protocol
 - **Next.js 16** (App Router, Turbopack) for the website
 - **discord.js** / **telegraf** for the bot adapters
 - **esbuild** for the widget's standalone script-tag bundle

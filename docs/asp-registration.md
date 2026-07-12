@@ -29,20 +29,25 @@ To register this agent as an ASP:
 Run `/okx-agent-identity` (or ask for it directly) when you're ready — it
 needs your wallet to sign the registration transaction.
 
-## 2. Payment settlement (already wired up)
+## 2. Payment settlement (seller side wired up; buyer side needs a matching rewrite)
 
-This part is done, not a future decision — `diagnose_transaction` is
-metered and gated via OKX onchainOS's **MPP session** protocol (escrow
-channel + off-chain signed voucher, not a per-call on-chain charge or a
-subscription): `sherpas-support-mcp-server/src/payments/` on the seller
-side, `website/lib/payments/` on the buyer side. Current price is $0.03 per
-diagnosis in USD₮0 on X Layer (`payments/pricing.ts`). See
-[`docs/USAGE.md`'s Payments section](USAGE.md#payments) for the actual
-integration flow, and the root README's [Payments —
-pay-as-you-go](../README.md#payments--pay-as-you-go) section for the
-rationale (MPP over x402 specifically, because a protocol's own support bot
-calling this ASP on every ticket amortizes far better as a channel than as
-a per-call charge).
+`diagnose_transaction` is metered and gated via the **x402** protocol
+("exact" scheme, OKX's `@okxweb3/x402-*` SDK) on the seller side —
+`sherpas-support-mcp-server/src/payments/`. This is a deliberate switch
+away from an earlier MPP-session-based design: **OKX.AI requires x402
+specifically for A2MCP-listed paid endpoints** (see the A2MCP guide linked
+from the registration flow) — MPP session doesn't satisfy that requirement,
+even though it's a valid OKX onchainOS payment protocol in its own right.
+Current price is $0.03 per diagnosis in USD₮0 on X Layer
+(`payments/pricing.ts`). See [`docs/USAGE.md`'s Payments
+section](USAGE.md#payments) for the integration flow.
+
+**Not yet done:** the website's buyer-side proxy
+(`website/lib/payments/`, `website/app/api/diagnose-proxy`) still speaks
+the old MPP protocol and can't currently pay this seller — it needs an
+equivalent x402 client-side rewrite (`@okxweb3/x402-core/client` +
+`@okxweb3/x402-evm`'s `ExactEvmScheme`) before the widget's payment proxy
+works again.
 
 ## 3. Reputation
 

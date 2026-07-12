@@ -3,7 +3,7 @@
  * "needs a shared store for multi-instance deployments" caveat) as the
  * website's lib/rateLimit.ts. Applied ahead of the payment gate so that
  * even the "ungated" fallback (no OKX env vars configured — see
- * payments/session.ts) can't be hammered for free, unlimited RPC-cost-
+ * payments/x402Gate.ts) can't be hammered for free, unlimited RPC-cost-
  * incurring diagnose_transaction calls.
  */
 const WINDOW_MS = 60_000;

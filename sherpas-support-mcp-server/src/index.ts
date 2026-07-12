@@ -5,12 +5,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerDiagnoseTool } from "./tools/diagnose.js";
 import { SERVER_NAME, SERVER_VERSION, SERVER_DESCRIPTION, DEFAULT_HTTP_PORT, MCP_HTTP_PATH } from "./constants.js";
-import { getPaymentGate } from "./payments/session.js";
+import { getX402Gate, settlePayment } from "./payments/x402Gate.js";
 import { checkRateLimit } from "./rateLimit.js";
 
 /**
  * Applied ahead of the payment gate, so it protects the "ungated" fallback
- * too (no OKX env vars configured — see payments/session.ts's own
+ * too (no OKX env vars configured — see payments/x402Gate.ts's own
  * console.error warning). Without this, an unconfigured deployment serves
  * free, unlimited, RPC-cost-incurring diagnose_transaction calls to anyone.
  */
@@ -49,9 +49,10 @@ async function runStdio(): Promise<void> {
  */
 async function runHttp(): Promise<void> {
   const port = Number(process.env.PORT ?? DEFAULT_HTTP_PORT);
-  const paymentGate = getPaymentGate();
+  const paymentGate = getX402Gate();
+  await paymentGate.initialize();
   if (paymentGate.enabled) {
-    console.error(`${SERVER_NAME}: diagnose_transaction is pay-as-you-go gated (OKX MPP session).`);
+    console.error(`${SERVER_NAME}: diagnose_transaction is pay-as-you-go gated (x402 exact scheme).`);
   } else {
     console.error(`${SERVER_NAME}: payment env vars not set — running ungated.`);
   }
@@ -77,7 +78,7 @@ async function runHttp(): Promise<void> {
     }
 
     // Gate before ever touching the MCP transport — a request without a
-    // valid session voucher gets a 402 + challenge and never reaches
+    // valid x402 payment signature gets a 402 + challenge and never reaches
     // diagnose_transaction at all.
     const gateResult = await paymentGate.check(req).catch((err) => {
       console.error("Payment gate check failed:", err);
@@ -90,17 +91,24 @@ async function runHttp(): Promise<void> {
       return;
     }
     if (!gateResult.ok) {
-      res.writeHead(gateResult.status, gateResult.headers).end(gateResult.body);
+      const body = typeof gateResult.body === "string" ? gateResult.body : JSON.stringify(gateResult.body);
+      res.writeHead(gateResult.status, gateResult.headers).end(body);
       return;
     }
-    if (gateResult.kind === "management") {
-      // open/topUp/close: mppx already produced the final answer (a 204 +
-      // Payment-Receipt) — diagnose_transaction must not run for these.
-      res.writeHead(gateResult.status, gateResult.headers).end(gateResult.body);
-      return;
-    }
-    for (const [key, value] of Object.entries(gateResult.receiptHeaders)) {
-      res.setHeader(key, value);
+
+    // "exact" scheme settles upfront — the buyer pays before the resource is
+    // served, not metered afterward, so settlement happens right here rather
+    // than after the MCP tool call completes.
+    if (paymentGate.enabled) {
+      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context);
+      if (!settleResult.ok) {
+        const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
+        res.writeHead(settleResult.status, settleResult.headers).end(body);
+        return;
+      }
+      for (const [key, value] of Object.entries(settleResult.headers)) {
+        res.setHeader(key, value);
+      }
     }
 
     const server = createServer();
@@ -114,8 +122,8 @@ async function runHttp(): Promise<void> {
     try {
       await server.connect(transport);
       // parsedBody is passed through because the payment gate already
-      // buffered and consumed req's body stream to build a Web Request for
-      // mppx — handleRequest must not try to read the (now-drained) stream.
+      // buffered and consumed req's body stream — handleRequest must not
+      // try to read the (now-drained) stream.
       await transport.handleRequest(req, res, gateResult.parsedBody);
     } catch (err) {
       console.error("Error handling MCP HTTP request:", err);
