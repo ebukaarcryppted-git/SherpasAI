@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { safeErrorMessage } from "@support-agent-asp/agent-core";
-import { payAndDiagnose } from "@/lib/payments/mppClient";
+import { payAndDiagnose } from "@/lib/payments/x402Client";
 import { checkRateLimit, getClientIp, rateLimitResponseInit } from "@/lib/rateLimit";
 
 /**
@@ -19,8 +19,10 @@ import { checkRateLimit, getClientIp, rateLimitResponseInit } from "@/lib/rateLi
  * DIAGNOSE_PROXY_RATE_LIMIT_PER_MINUTE down further if your actual expected
  * traffic is lower than this default.
  *
- * Required env vars: DIAGNOSIS_PAYER_PRIVATE_KEY, MPP_CURRENCY, MPP_RECIPIENT,
- * MCP_SERVER_URL. See website/.env.example.
+ * Required env vars: DIAGNOSIS_PAYER_PRIVATE_KEY, MCP_SERVER_URL. See
+ * website/.env.example. Unlike the old MPP-based proxy, no token/recipient
+ * config is needed here — the gated server's 402 response declares all of
+ * that itself.
  */
 const RATE_LIMIT_PER_MINUTE = Number(process.env.DIAGNOSE_PROXY_RATE_LIMIT_PER_MINUTE ?? 5);
 

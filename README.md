@@ -188,14 +188,17 @@ just local development:
   and `/api/mock-mcp` (fixture-driven, fabricated diagnoses for visually
   testing every widget card) return `404` whenever `NODE_ENV=production`
   unless you explicitly set `DEMO_ROUTES_ENABLED=true`.
-- **Known transitional gap, surfaced loudly rather than silently** — the
-  seller side (`sherpas-support-mcp-server`) was switched from OKX's MPP
-  session protocol to x402, since A2MCP listings on OKX.AI require x402
-  specifically (MPP session doesn't qualify). The website's buyer-side proxy
-  (`website/app/api/diagnose-proxy`, `website/lib/payments/`) still speaks
-  the old MPP protocol as of this writing and needs an equivalent x402
-  client-side rewrite before it can pay the now-x402-only seller again —
-  tracked as follow-up work, not yet done.
+- **Known open issue, surfaced loudly rather than silently** — both sides
+  of the payment flow were switched from OKX's MPP session protocol to
+  x402 (required for A2MCP listings on OKX.AI; MPP session doesn't
+  qualify). The seller correctly issues 402 challenges and the buyer
+  (`website/app/api/diagnose-proxy`, `website/lib/payments/x402Client.ts`)
+  correctly signs and submits EIP-3009 payment authorizations, but every
+  attempt is currently rejected by OKX's facilitator with
+  `"error":"insufficient_balance"` despite the buyer wallet's on-chain
+  balance (both the payment token and native gas) clearly exceeding what's
+  required. Escalated to OKX support with full repro data; not yet
+  resolved as of this writing.
 
 ---
 
@@ -280,9 +283,10 @@ This means:
 Full env var reference: `sherpas-support-mcp-server/.env.example`.
 
 **Buyer-side note:** the website's own widget-backend proxy
-(`website/app/api/diagnose-proxy`) still speaks the old MPP session
-protocol as of this writing and needs a matching x402 client-side rewrite
-before it can pay this now-x402-only seller — see the caveat under
+(`website/app/api/diagnose-proxy`, `website/lib/payments/x402Client.ts`)
+was rewritten to match — correctly signs and submits EIP-3009 payments —
+but a full round-trip isn't confirmed working yet due to an open OKX
+facilitator issue, see the caveat under
 [Production hardening](#production-hardening).
 
 ### Composability

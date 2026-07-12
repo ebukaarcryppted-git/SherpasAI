@@ -1,8 +1,7 @@
 /**
  * Minimal in-memory, fixed-window rate limiter. A real multi-instance
  * serverless deployment needs a shared store (Redis/Upstash) since this
- * only sees requests handled by the same warm instance — same caveat as
- * lib/payments/channelStore.ts's file-backed state. Still meaningfully
+ * only sees requests handled by the same warm instance. Still meaningfully
  * raises the bar over the previous "completely unbounded" state, which is
  * the actual gap this closes: every route here calls a live RPC (or, for
  * diagnose-proxy, spends real funds) per request with no cap at all.

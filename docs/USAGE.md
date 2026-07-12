@@ -192,12 +192,18 @@ sign an EIP-3009 `transferWithAuthorization` for the exact price, attach it
 to the retried request, and the server verifies + settles before serving
 the diagnosis. No channel to open, no persistent client-side state.
 
-**Known gap:** the website's own buyer-side proxy
-(`website/app/api/diagnose-proxy`, `website/lib/payments/`) still speaks
-the older MPP session protocol as of this writing and hasn't yet been
-updated to match — it isn't a working x402 reference implementation right
-now. Treat the OKX SDK's own client examples as the source of truth until
-that's rewritten.
+A working reference implementation of the buyer side lives in
+[`website/lib/payments/x402Client.ts`](../website/lib/payments/x402Client.ts) —
+`payAndDiagnose(mcpServerUrl, mcpRequestBody)` is the single entry point
+that probes the server, handles the 402 challenge, signs the EIP-3009
+payment, and retries. The website's own `/api/diagnose-proxy` route wires
+this into a server-held wallet so end users never see a payment prompt.
+
+**Known open issue:** a full round-trip against the live server currently
+fails at OKX's facilitator with `"error":"insufficient_balance"`, despite
+the buyer wallet's on-chain balance (token and gas) clearly exceeding
+what's required. Escalated to OKX support; not yet resolved as of this
+writing.
 
 ---
 

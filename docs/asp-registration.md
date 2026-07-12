@@ -29,11 +29,12 @@ To register this agent as an ASP:
 Run `/okx-agent-identity` (or ask for it directly) when you're ready — it
 needs your wallet to sign the registration transaction.
 
-## 2. Payment settlement (seller side wired up; buyer side needs a matching rewrite)
+## 2. Payment settlement (both sides wired up; one open OKX-side issue)
 
 `diagnose_transaction` is metered and gated via the **x402** protocol
-("exact" scheme, OKX's `@okxweb3/x402-*` SDK) on the seller side —
-`sherpas-support-mcp-server/src/payments/`. This is a deliberate switch
+("exact" scheme, OKX's `@okxweb3/x402-*` SDK) on both sides —
+`sherpas-support-mcp-server/src/payments/` (seller) and
+`website/lib/payments/x402Client.ts` (buyer). This is a deliberate switch
 away from an earlier MPP-session-based design: **OKX.AI requires x402
 specifically for A2MCP-listed paid endpoints** (see the A2MCP guide linked
 from the registration flow) — MPP session doesn't satisfy that requirement,
@@ -42,12 +43,12 @@ Current price is $0.03 per diagnosis in USD₮0 on X Layer
 (`payments/pricing.ts`). See [`docs/USAGE.md`'s Payments
 section](USAGE.md#payments) for the integration flow.
 
-**Not yet done:** the website's buyer-side proxy
-(`website/lib/payments/`, `website/app/api/diagnose-proxy`) still speaks
-the old MPP protocol and can't currently pay this seller — it needs an
-equivalent x402 client-side rewrite (`@okxweb3/x402-core/client` +
-`@okxweb3/x402-evm`'s `ExactEvmScheme`) before the widget's payment proxy
-works again.
+**Open issue:** a full round-trip against the live server fails at OKX's
+facilitator with `"error":"insufficient_balance"`, despite the buyer
+wallet's on-chain balance (token and gas) clearly exceeding what's
+required — the seller side is confirmed correctly issuing 402 challenges
+independently of this. Escalated to OKX support with full repro data; not
+yet resolved as of this writing.
 
 ## 3. Reputation
 
