@@ -96,21 +96,6 @@ async function runHttp(): Promise<void> {
       return;
     }
 
-    // "exact" scheme settles upfront — the buyer pays before the resource is
-    // served, not metered afterward, so settlement happens right here rather
-    // than after the MCP tool call completes.
-    if (paymentGate.enabled) {
-      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context);
-      if (!settleResult.ok) {
-        const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
-        res.writeHead(settleResult.status, settleResult.headers).end(body);
-        return;
-      }
-      for (const [key, value] of Object.entries(settleResult.headers)) {
-        res.setHeader(key, value);
-      }
-    }
-
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
@@ -121,10 +106,91 @@ async function runHttp(): Promise<void> {
 
     try {
       await server.connect(transport);
+
+      if (!paymentGate.enabled) {
+        await transport.handleRequest(req, res, gateResult.parsedBody);
+        return;
+      }
+
+      // Run the actual tool call first and buffer everything it writes —
+      // settlement only happens after a successful response, and the
+      // facilitator gets the real response body, matching OKX's own
+      // reference middleware (@okxweb3/x402-express) exactly. This also
+      // means a request that errors out (status >= 400) is never charged.
+      const originalWriteHead = res.writeHead.bind(res);
+      const originalWrite = res.write.bind(res);
+      const originalEnd = res.end.bind(res);
+      type BufferedCall =
+        | { method: "writeHead"; args: Parameters<typeof res.writeHead> }
+        | { method: "write"; args: Parameters<typeof res.write> }
+        | { method: "end"; args: Parameters<typeof res.end> };
+      const bufferedCalls: BufferedCall[] = [];
+      let settled = false;
+
+      res.writeHead = ((...args: Parameters<typeof res.writeHead>) => {
+        if (!settled) {
+          bufferedCalls.push({ method: "writeHead", args });
+          return res;
+        }
+        return originalWriteHead(...args);
+      }) as typeof res.writeHead;
+      res.write = ((...args: Parameters<typeof res.write>) => {
+        if (!settled) {
+          bufferedCalls.push({ method: "write", args });
+          return true;
+        }
+        return originalWrite(...args);
+      }) as typeof res.write;
+      res.end = ((...args: Parameters<typeof res.end>) => {
+        if (!settled) {
+          bufferedCalls.push({ method: "end", args });
+          return res;
+        }
+        return originalEnd(...args);
+      }) as typeof res.end;
+
       // parsedBody is passed through because the payment gate already
       // buffered and consumed req's body stream — handleRequest must not
       // try to read the (now-drained) stream.
       await transport.handleRequest(req, res, gateResult.parsedBody);
+
+      settled = true;
+      res.writeHead = originalWriteHead;
+      res.write = originalWrite;
+      res.end = originalEnd;
+
+      function flushBuffered(): void {
+        for (const call of bufferedCalls) {
+          if (call.method === "writeHead") originalWriteHead(...call.args);
+          else if (call.method === "write") originalWrite(...call.args);
+          else originalEnd(...call.args);
+        }
+      }
+
+      if (res.statusCode >= 400) {
+        flushBuffered();
+        return;
+      }
+
+      const responseBody = Buffer.concat(
+        bufferedCalls.flatMap((call) => {
+          if (call.method !== "write" && call.method !== "end") return [];
+          const chunk = call.args[0];
+          if (!chunk) return [];
+          return [Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)];
+        })
+      );
+
+      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context, responseBody);
+      if (!settleResult.ok) {
+        const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
+        res.writeHead(settleResult.status, settleResult.headers).end(body);
+        return;
+      }
+      for (const [key, value] of Object.entries(settleResult.headers)) {
+        res.setHeader(key, value);
+      }
+      flushBuffered();
     } catch (err) {
       console.error("Error handling MCP HTTP request:", err);
       if (!res.headersSent) {

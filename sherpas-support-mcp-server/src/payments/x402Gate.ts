@@ -134,15 +134,23 @@ export function getX402Gate(): PaymentGate {
 
 export type SettleResult = { ok: true; headers: Record<string, string> } | { ok: false; status: number; headers: Record<string, string>; body: unknown };
 
-/** Settles a verified payment (moves funds) and returns headers to attach to the response, or a failure to write instead. */
+/**
+ * Settles a verified payment (moves funds) and returns headers to attach to
+ * the response, or a failure to write instead. `responseBody` is passed
+ * through to the facilitator's settle call, matching OKX's own reference
+ * middleware (@okxweb3/x402-express) exactly — settlement happens after the
+ * actual resource response is generated, not before, so a request that
+ * errors out never gets charged.
+ */
 export async function settlePayment(
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
-  context: HTTPRequestContext
+  context: HTTPRequestContext,
+  responseBody?: Buffer
 ): Promise<SettleResult> {
   if (!cachedGateHttpServer) return { ok: true, headers: {} }; // ungated dev mode — nothing to settle
 
-  const transportContext: HTTPTransportContext = { request: context };
+  const transportContext: HTTPTransportContext = { request: context, responseBody };
   const result = await cachedGateHttpServer.processSettlement(paymentPayload, paymentRequirements, undefined, transportContext);
 
   if (!result.success) {
