@@ -28,17 +28,27 @@ export function Navbar() {
       .filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible) setActiveHref(`#${visible.target.id}`);
-      },
-      { rootMargin: "-40% 0px -50% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }
-    );
-    els.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    // Reference line just below the floating navbar, not a thin band mid-viewport —
+    // comparing overlap area against a middle band breaks down for short sections
+    // sitting flush against a taller neighbor (e.g. #diagnose next to #approvals),
+    // where the band can straddle the boundary and "win" for the wrong section.
+    const NAV_OFFSET = 96;
+
+    function updateActive() {
+      let current = els[0];
+      for (const el of els) {
+        if (el.getBoundingClientRect().top <= NAV_OFFSET) current = el;
+      }
+      setActiveHref(`#${current.id}`);
+    }
+
+    updateActive();
+    window.addEventListener("scroll", updateActive, { passive: true });
+    window.addEventListener("resize", updateActive);
+    return () => {
+      window.removeEventListener("scroll", updateActive);
+      window.removeEventListener("resize", updateActive);
+    };
   }, []);
 
   return (
