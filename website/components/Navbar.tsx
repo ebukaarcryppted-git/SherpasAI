@@ -23,10 +23,6 @@ export function Navbar() {
 
   useEffect(() => {
     const sectionIds = links.map((l) => l.href.slice(1));
-    const els = sectionIds
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null);
-    if (els.length === 0) return;
 
     // Reference line just below the floating navbar, not a thin band mid-viewport —
     // comparing overlap area against a middle band breaks down for short sections
@@ -35,6 +31,15 @@ export function Navbar() {
     const NAV_OFFSET = 96;
 
     function updateActive() {
+      // Re-look up elements on every call rather than once at mount: #diagnose
+      // sits inside a <Suspense> boundary (required by useSearchParams), and
+      // Next.js swaps in a fresh DOM subtree after the initial reveal — a
+      // reference captured at mount would go stale and never match again.
+      const els = sectionIds
+        .map((id) => document.getElementById(id))
+        .filter((el): el is HTMLElement => el !== null);
+      if (els.length === 0) return;
+
       let current = els[0];
       for (const el of els) {
         if (el.getBoundingClientRect().top <= NAV_OFFSET) current = el;
