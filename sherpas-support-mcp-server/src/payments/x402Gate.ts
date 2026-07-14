@@ -136,21 +136,24 @@ export type SettleResult = { ok: true; headers: Record<string, string> } | { ok:
 
 /**
  * Settles a verified payment (moves funds) and returns headers to attach to
- * the response, or a failure to write instead. `responseBody` is passed
- * through to the facilitator's settle call, matching OKX's own reference
- * middleware (@okxweb3/x402-express) exactly — settlement happens after the
- * actual resource response is generated, not before, so a request that
- * errors out never gets charged.
+ * the response, or a failure to write instead. We settle BEFORE running the
+ * tool (rather than after, as OKX's express reference middleware does)
+ * because MCP's StreamableHTTPServerTransport calls flushHeaders / writes to
+ * the underlying socket in ways we can't reliably intercept, which broke a
+ * previous buffer-then-replay attempt (headers went out mid-tool, then our
+ * post-settle flush crashed with ERR_HTTP_HEADERS_SENT, leaving the client
+ * hanging until timeout — see commit history for the diagnostic run). The
+ * tool is a deterministic RPC read that essentially never errors, so
+ * charge-on-error is not a real concern here.
  */
 export async function settlePayment(
   paymentPayload: PaymentPayload,
   paymentRequirements: PaymentRequirements,
-  context: HTTPRequestContext,
-  responseBody?: Buffer
+  context: HTTPRequestContext
 ): Promise<SettleResult> {
   if (!cachedGateHttpServer) return { ok: true, headers: {} }; // ungated dev mode — nothing to settle
 
-  const transportContext: HTTPTransportContext = { request: context, responseBody };
+  const transportContext: HTTPTransportContext = { request: context };
   const result = await cachedGateHttpServer.processSettlement(paymentPayload, paymentRequirements, undefined, transportContext);
 
   if (!result.success) {

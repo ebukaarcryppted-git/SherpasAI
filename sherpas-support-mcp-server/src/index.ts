@@ -77,10 +77,6 @@ async function runHttp(): Promise<void> {
       return;
     }
 
-    // TIMING: temporary — remove once settlement-latency root cause is found.
-    const t0 = Date.now();
-    const timing = (label: string) => console.error(`[TIMING] ${label}: ${Date.now() - t0}ms`);
-
     // Gate before ever touching the MCP transport — a request without a
     // valid x402 payment signature gets a 402 + challenge and never reaches
     // diagnose_transaction at all.
@@ -88,7 +84,6 @@ async function runHttp(): Promise<void> {
       console.error("Payment gate check failed:", err);
       return null;
     });
-    timing("gate.check done (verify + parse body)");
     if (!gateResult) {
       res.writeHead(500, { "Content-Type": "application/json" }).end(
         JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: "Payment gate error" }, id: null })
@@ -117,80 +112,16 @@ async function runHttp(): Promise<void> {
         return;
       }
 
-      // Run the actual tool call first and buffer everything it writes —
-      // settlement only happens after a successful response, and the
-      // facilitator gets the real response body, matching OKX's own
-      // reference middleware (@okxweb3/x402-express) exactly. This also
-      // means a request that errors out (status >= 400) is never charged.
-      const originalWriteHead = res.writeHead.bind(res);
-      const originalWrite = res.write.bind(res);
-      const originalEnd = res.end.bind(res);
-      type BufferedCall =
-        | { method: "writeHead"; args: Parameters<typeof res.writeHead> }
-        | { method: "write"; args: Parameters<typeof res.write> }
-        | { method: "end"; args: Parameters<typeof res.end> };
-      const bufferedCalls: BufferedCall[] = [];
-      let settled = false;
-
-      res.writeHead = ((...args: Parameters<typeof res.writeHead>) => {
-        if (!settled) {
-          bufferedCalls.push({ method: "writeHead", args });
-          return res;
-        }
-        return originalWriteHead(...args);
-      }) as typeof res.writeHead;
-      res.write = ((...args: Parameters<typeof res.write>) => {
-        if (!settled) {
-          bufferedCalls.push({ method: "write", args });
-          return true;
-        }
-        return originalWrite(...args);
-      }) as typeof res.write;
-      res.end = ((...args: Parameters<typeof res.end>) => {
-        if (!settled) {
-          bufferedCalls.push({ method: "end", args });
-          return res;
-        }
-        return originalEnd(...args);
-      }) as typeof res.end;
-
-      // parsedBody is passed through because the payment gate already
-      // buffered and consumed req's body stream — handleRequest must not
-      // try to read the (now-drained) stream.
-      timing("about to call transport.handleRequest");
-      await transport.handleRequest(req, res, gateResult.parsedBody);
-      timing(`transport.handleRequest resolved (buffered ${bufferedCalls.length} calls, statusCode=${res.statusCode})`);
-
-      settled = true;
-      res.writeHead = originalWriteHead;
-      res.write = originalWrite;
-      res.end = originalEnd;
-
-      function flushBuffered(): void {
-        for (const call of bufferedCalls) {
-          if (call.method === "writeHead") originalWriteHead(...call.args);
-          else if (call.method === "write") originalWrite(...call.args);
-          else originalEnd(...call.args);
-        }
-      }
-
-      if (res.statusCode >= 400) {
-        flushBuffered();
-        return;
-      }
-
-      const responseBody = Buffer.concat(
-        bufferedCalls.flatMap((call) => {
-          if (call.method !== "write" && call.method !== "end") return [];
-          const chunk = call.args[0];
-          if (!chunk) return [];
-          return [Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)];
-        })
-      );
-
-      timing("about to call settlePayment (facilitator /settle)");
-      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context, responseBody);
-      timing(`settlePayment resolved (ok=${settleResult.ok})`);
+      // Settle BEFORE handing off to the MCP transport, not after — a prior
+      // buffer-then-replay attempt (matching @okxweb3/x402-express's Express
+      // middleware) broke here because MCP's StreamableHTTPServerTransport
+      // sends headers directly (flushHeaders / raw socket writes) in ways
+      // res.writeHead/write/end overrides can't catch, so post-tool
+      // res.writeHead would crash with ERR_HTTP_HEADERS_SENT and leave the
+      // client hanging. Settling first is safe here specifically because
+      // diagnose_transaction is a deterministic RPC read that essentially
+      // never errors — see settlePayment JSDoc for the tradeoff notes.
+      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context);
       if (!settleResult.ok) {
         const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
         res.writeHead(settleResult.status, settleResult.headers).end(body);
@@ -199,8 +130,11 @@ async function runHttp(): Promise<void> {
       for (const [key, value] of Object.entries(settleResult.headers)) {
         res.setHeader(key, value);
       }
-      flushBuffered();
-      timing("flushBuffered done — response sent to client");
+
+      // parsedBody is passed through because the payment gate already
+      // buffered and consumed req's body stream — handleRequest must not
+      // try to read the (now-drained) stream.
+      await transport.handleRequest(req, res, gateResult.parsedBody);
     } catch (err) {
       console.error("Error handling MCP HTTP request:", err);
       if (!res.headersSent) {
