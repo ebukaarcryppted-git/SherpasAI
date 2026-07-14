@@ -56,9 +56,34 @@ export async function payAndDiagnose(mcpServerUrl: string, mcpRequestBody: unkno
   const paymentHeaders = client.encodePaymentSignatureHeader(paymentPayload);
 
   const paidResponse = await postToMcp(mcpServerUrl, mcpRequestBody, paymentHeaders);
-  const body = await paidResponse.json().catch(() => null);
+  const body = await parseMcpResponse(paidResponse);
 
   return { status: paidResponse.status, body };
+}
+
+/**
+ * MCP's Streamable HTTP transport can respond as either application/json OR
+ * text/event-stream (SSE) depending on client Accept + transport internals —
+ * we always accept both. For SSE, the JSON-RPC response is carried in the
+ * `data:` line of the first `event: message` frame; extract it.
+ */
+async function parseMcpResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("text/event-stream")) {
+    for (const line of text.split(/\r?\n/)) {
+      if (line.startsWith("data:")) {
+        const payload = line.slice(5).trim();
+        if (payload) {
+          try { return JSON.parse(payload); } catch { return null; }
+        }
+      }
+    }
+    return null;
+  }
+
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 async function postToMcp(mcpServerUrl: string, body: unknown, extraHeaders?: Record<string, string>): Promise<Response> {
