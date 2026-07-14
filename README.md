@@ -188,17 +188,20 @@ just local development:
   and `/api/mock-mcp` (fixture-driven, fabricated diagnoses for visually
   testing every widget card) return `404` whenever `NODE_ENV=production`
   unless you explicitly set `DEMO_ROUTES_ENABLED=true`.
-- **Known open issue, surfaced loudly rather than silently** — both sides
-  of the payment flow were switched from OKX's MPP session protocol to
-  x402 (required for A2MCP listings on OKX.AI; MPP session doesn't
-  qualify). The seller correctly issues 402 challenges and the buyer
+- **x402 payment flow works end-to-end** on both Ethereum and X Layer,
+  round-trip in ~3–4 seconds. Both sides of the flow were switched from
+  OKX's MPP session protocol to x402, which is what OKX.AI requires for
+  A2MCP-listed paid endpoints. The seller
+  (`sherpas-support-mcp-server/src/payments/x402Gate.ts`) settles the
+  payment via OKX's facilitator before handing off to the MCP tool — an
+  earlier settle-after-serve attempt matching `@okxweb3/x402-express`'s
+  buffer-then-replay pattern broke against MCP's `StreamableHTTPServerTransport`
+  (which sends response headers via paths `writeHead`/`write`/`end`
+  overrides can't intercept, so the post-tool flush crashed with
+  `ERR_HTTP_HEADERS_SENT` and left the client hanging). The buyer
   (`website/app/api/diagnose-proxy`, `website/lib/payments/x402Client.ts`)
-  correctly signs and submits EIP-3009 payment authorizations, but every
-  attempt is currently rejected by OKX's facilitator with
-  `"error":"insufficient_balance"` despite the buyer wallet's on-chain
-  balance (both the payment token and native gas) clearly exceeding what's
-  required. Escalated to OKX support with full repro data; not yet
-  resolved as of this writing.
+  signs EIP-3009 authorizations and parses both `application/json` and
+  `text/event-stream` MCP responses.
 
 ---
 
@@ -284,10 +287,9 @@ Full env var reference: `sherpas-support-mcp-server/.env.example`.
 
 **Buyer-side note:** the website's own widget-backend proxy
 (`website/app/api/diagnose-proxy`, `website/lib/payments/x402Client.ts`)
-was rewritten to match — correctly signs and submits EIP-3009 payments —
-but a full round-trip isn't confirmed working yet due to an open OKX
-facilitator issue, see the caveat under
-[Production hardening](#production-hardening).
+signs and submits EIP-3009 payments and handles both `application/json`
+and `text/event-stream` MCP responses (the transport can pick either).
+Paid round-trip runs in ~3–4 seconds against the live deployment.
 
 ### Composability
 

@@ -29,7 +29,7 @@ To register this agent as an ASP:
 Run `/okx-agent-identity` (or ask for it directly) when you're ready — it
 needs your wallet to sign the registration transaction.
 
-## 2. Payment settlement (both sides wired up; one open OKX-side issue)
+## 2. Payment settlement
 
 `diagnose_transaction` is metered and gated via the **x402** protocol
 ("exact" scheme, OKX's `@okxweb3/x402-*` SDK) on both sides —
@@ -40,15 +40,10 @@ specifically for A2MCP-listed paid endpoints** (see the A2MCP guide linked
 from the registration flow) — MPP session doesn't satisfy that requirement,
 even though it's a valid OKX onchainOS payment protocol in its own right.
 Current price is $0.03 per diagnosis in USD₮0 on X Layer
-(`payments/pricing.ts`). See [`docs/USAGE.md`'s Payments
+(`payments/pricing.ts`). Full paid round-trip runs in ~3–4 seconds
+against the live deployment (verified on both Ethereum and X Layer tx
+diagnoses). See [`docs/USAGE.md`'s Payments
 section](USAGE.md#payments) for the integration flow.
-
-**Open issue:** a full round-trip against the live server fails at OKX's
-facilitator with `"error":"insufficient_balance"`, despite the buyer
-wallet's on-chain balance (token and gas) clearly exceeding what's
-required — the seller side is confirmed correctly issuing 402 challenges
-independently of this. Escalated to OKX support with full repro data; not
-yet resolved as of this writing.
 
 ## 3. Reputation
 
@@ -66,6 +61,6 @@ agents look up to decide whether to hire it.
 |---|---|
 | Diagnosis logic (`agent-core`) | Onchain identity other agents can discover |
 | Callable interface (`sherpas-support-mcp-server`) | Reputation history |
-| Metered payment per call (MPP session) | Discoverability in the OKX.AI agent marketplace |
+| Metered payment per call (x402) | Discoverability in the OKX.AI agent marketplace |
 | Embeddable UI (`widget`, `/embed`) | |
 | Discord/Telegram integration | |

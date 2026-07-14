@@ -199,11 +199,12 @@ that probes the server, handles the 402 challenge, signs the EIP-3009
 payment, and retries. The website's own `/api/diagnose-proxy` route wires
 this into a server-held wallet so end users never see a payment prompt.
 
-**Known open issue:** a full round-trip against the live server currently
-fails at OKX's facilitator with `"error":"insufficient_balance"`, despite
-the buyer wallet's on-chain balance (token and gas) clearly exceeding
-what's required. Escalated to OKX support; not yet resolved as of this
-writing.
+The paid round-trip runs in ~3–4 seconds against the live deployment,
+confirmed on both Ethereum and X Layer transactions. If you build your
+own buyer, note that OKX's MCP server may respond with either
+`application/json` **or** `text/event-stream` — accept both, and for
+SSE responses extract the JSON payload from the first `event: message`
+frame's `data:` line (see `x402Client.ts`'s `parseMcpResponse` helper).
 
 ---
 
