@@ -43,7 +43,7 @@ const DiagnoseInputSchema = z
 // payloads, which vary per failure mode by design.
 const DiagnoseOutputSchema = z
   .object({
-    mode: z.string().describe("The classified failure mode, e.g. SLIPPAGE_REVERT, WRONG_NETWORK, NOT_A_FAILURE"),
+    mode: z.string().describe("The classified failure mode, e.g. SLIPPAGE_REVERT, WRONG_NETWORK, REVERTED_OTHER, NOT_A_FAILURE"),
     confidence: z.number().min(0).max(1).describe("0-1 confidence score for this classification"),
     evidence: z.record(z.string(), z.unknown()).describe("Raw signals that justified the classification"),
     ruleTriggered: z.string().describe("Which internal rule fired — useful for debugging/transparency"),
@@ -61,7 +61,7 @@ const DiagnoseOutputSchema = z
 
 const DESCRIPTION = `Diagnoses why an onchain transaction failed, or confirms it succeeded, by reading live chain state on X Layer and Ethereum.
 
-Reads the transaction, its receipt, the wallet's nonce/gas/allowance state, and (when relevant) bridge status, then classifies the result through a deterministic rule engine — no guessing, no LLM-hallucinated explanations. Supported failure modes: slippage revert, insufficient allowance, wrong network, gas underpriced, nonce gap/already-used, stuck bridge transfer, or a plain successful transaction.
+Reads the transaction, its receipt, the wallet's nonce/gas/allowance state, and (when relevant) bridge status, then classifies the result through a deterministic rule engine — no guessing, no LLM-hallucinated explanations. Supported failure modes: slippage revert, insufficient allowance, wrong network, gas underpriced, nonce gap/already-used, stuck bridge transfer, generic revert with reason surfaced (REVERTED_OTHER), or a plain successful transaction.
 
 Args:
 - txHash (required): the transaction hash, as a 66-character 0x-prefixed hex string.

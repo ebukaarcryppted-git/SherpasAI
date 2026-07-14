@@ -250,3 +250,52 @@ export const nonceAlreadyUsedNotFound: DiagnosisInput = {
   wallet: { ...BASE_WALLET, confirmedNonce: 10, pendingNonce: 12 },
   networkState: BASE_NETWORK,
 };
+
+// --- Reverted with a non-specific reason (catch-all) -------------------------
+
+/**
+ * Reverted, decodable Error(string) reason, but the reason doesn't match any
+ * specific pattern (not slippage, not allowance) — the catch-all rule should
+ * fire and surface the reason as evidence.
+ */
+export const revertedOtherDecodable: DiagnosisInput = {
+  tx: {
+    ...BASE_TX,
+    status: "reverted",
+    functionSelector: "0x11223344", // arbitrary non-swap selector
+    revertData: encodeErrorString("swap call failed"),
+  },
+  wallet: BASE_WALLET,
+  networkState: BASE_NETWORK,
+};
+
+/**
+ * Reverted with an undecodable custom error (not Error(string) encoding),
+ * and no other rule applies — catch-all should still fire and surface the
+ * raw revert data.
+ */
+export const revertedOtherCustomError: DiagnosisInput = {
+  tx: {
+    ...BASE_TX,
+    status: "reverted",
+    functionSelector: "0x11223344",
+    revertData: "0xdeadbeef",
+  },
+  wallet: BASE_WALLET,
+  networkState: BASE_NETWORK,
+};
+
+/**
+ * Reverted with no revert data at all — catch-all fires with a lower-confidence
+ * "no reason" note.
+ */
+export const revertedOtherNoData: DiagnosisInput = {
+  tx: {
+    ...BASE_TX,
+    status: "reverted",
+    functionSelector: "0x11223344",
+    revertData: "0x",
+  },
+  wallet: BASE_WALLET,
+  networkState: BASE_NETWORK,
+};

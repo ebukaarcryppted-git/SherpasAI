@@ -167,6 +167,38 @@ describe("negative cases — the classifier must not over-fire", () => {
   });
 });
 
+describe("reverted-other catch-all (3.7)", () => {
+  it("classifies a reverted tx with a decodable non-specific reason as REVERTED_OTHER and surfaces the reason", () => {
+    const result = diagnose(fx.revertedOtherDecodable);
+    expect(result.mode).toBe("REVERTED_OTHER");
+    expect(result.ruleTriggered).toBe("revertedOther:decodedReason");
+    expect(result.evidence.revertReason).toBe("swap call failed");
+    expect(result.confidence).toBeCloseTo(0.6);
+  });
+
+  it("surfaces raw revert data for an undecodable custom error", () => {
+    const result = diagnose(fx.revertedOtherCustomError);
+    expect(result.mode).toBe("REVERTED_OTHER");
+    expect(result.ruleTriggered).toBe("revertedOther:undecodableCustomError");
+    expect(result.evidence.rawRevertData).toBe("0xdeadbeef");
+  });
+
+  it("still classifies a reverted tx with no revert data at all, at lower confidence", () => {
+    const result = diagnose(fx.revertedOtherNoData);
+    expect(result.mode).toBe("REVERTED_OTHER");
+    expect(result.ruleTriggered).toBe("revertedOther:noRevertData");
+    expect(result.confidence).toBeCloseTo(0.4);
+  });
+
+  it("does not steal reverted txs from the more specific slippage/allowance rules", () => {
+    // Sanity check: the catch-all sits after slippage and allowance in the
+    // priority list, so a slippage-decodable revert still classifies as
+    // SLIPPAGE_REVERT and never falls through to REVERTED_OTHER.
+    expect(diagnose(fx.slippageDecodable).mode).toBe("SLIPPAGE_REVERT");
+    expect(diagnose(fx.allowanceDecodable).mode).toBe("INSUFFICIENT_ALLOWANCE");
+  });
+});
+
 describe("decodeRevertReason", () => {
   it("decodes a standard Error(string) revert", () => {
     expect(decodeRevertReason(fx.slippageDecodable.tx.revertData)).toBe("Too little received");

@@ -68,7 +68,8 @@ export type ClassifiedMode =
   | "BRIDGE_STUCK"
   | "NOT_A_FAILURE"
   | "UNKNOWN_PENDING"
-  | "INSUFFICIENT_BALANCE";
+  | "INSUFFICIENT_BALANCE"
+  | "REVERTED_OTHER";
 
 /**
  * Attached to any diagnosis by the pipeline caller (buildDiagnosisInput +
@@ -451,6 +452,54 @@ function classifyBridgeStatus(input: DiagnosisInput): Diagnosis | null {
 }
 
 // ---------------------------------------------------------------------------
+// 3.7 Reverted with a reason none of the specific rules matched
+// ---------------------------------------------------------------------------
+
+/**
+ * Catch-all for reverted transactions that didn't match slippage or
+ * allowance patterns. Surfaces the decoded revert reason (or the raw
+ * revert data, if a custom error) so the caller has an actionable string
+ * to look up, instead of the misleading "UNKNOWN_PENDING / no rule
+ * matched" the fallback would otherwise produce. Only fires on
+ * status === "reverted" — pending/success/not_found stay in the
+ * fallback.
+ */
+function classifyRevertedOther(input: DiagnosisInput): Diagnosis | null {
+  if (input.tx.status !== "reverted") return null;
+
+  const decoded = decodeRevertReason(input.tx.revertData);
+  if (decoded) {
+    return {
+      mode: "REVERTED_OTHER",
+      confidence: 0.6,
+      evidence: { revertReason: decoded },
+      ruleTriggered: "revertedOther:decodedReason",
+    };
+  }
+
+  if (input.tx.revertData && input.tx.revertData !== "0x") {
+    return {
+      mode: "REVERTED_OTHER",
+      confidence: 0.5,
+      evidence: {
+        rawRevertData: input.tx.revertData,
+        note: "custom error (not Error(string)) — first 4 bytes are the selector; a 4byte-directory lookup will identify it",
+      },
+      ruleTriggered: "revertedOther:undecodableCustomError",
+    };
+  }
+
+  return {
+    mode: "REVERTED_OTHER",
+    confidence: 0.4,
+    evidence: {
+      note: "reverted with no data at all — the contract refused without leaving a reason; often signals a require() without a message or a call to a non-existent selector",
+    },
+    ruleTriggered: "revertedOther:noRevertData",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 2. Orchestrator — fixed priority order, first match wins
 // ---------------------------------------------------------------------------
 
@@ -469,6 +518,7 @@ export function diagnose(input: DiagnosisInput, deps?: ClassifyDeps): Diagnosis 
     () => classifySlippageRevert(input),
     () => classifyInsufficientAllowance(input),
     () => classifyBridgeStatus(input),
+    () => classifyRevertedOther(input),
   ];
 
   for (const rule of rules) {
@@ -493,5 +543,6 @@ export {
   classifySlippageRevert,
   classifyInsufficientAllowance,
   classifyBridgeStatus,
+  classifyRevertedOther,
   decodeRevertReason,
 };
