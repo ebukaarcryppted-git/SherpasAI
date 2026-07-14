@@ -77,6 +77,10 @@ async function runHttp(): Promise<void> {
       return;
     }
 
+    // TIMING: temporary — remove once settlement-latency root cause is found.
+    const t0 = Date.now();
+    const timing = (label: string) => console.error(`[TIMING] ${label}: ${Date.now() - t0}ms`);
+
     // Gate before ever touching the MCP transport — a request without a
     // valid x402 payment signature gets a 402 + challenge and never reaches
     // diagnose_transaction at all.
@@ -84,6 +88,7 @@ async function runHttp(): Promise<void> {
       console.error("Payment gate check failed:", err);
       return null;
     });
+    timing("gate.check done (verify + parse body)");
     if (!gateResult) {
       res.writeHead(500, { "Content-Type": "application/json" }).end(
         JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: "Payment gate error" }, id: null })
@@ -152,7 +157,9 @@ async function runHttp(): Promise<void> {
       // parsedBody is passed through because the payment gate already
       // buffered and consumed req's body stream — handleRequest must not
       // try to read the (now-drained) stream.
+      timing("about to call transport.handleRequest");
       await transport.handleRequest(req, res, gateResult.parsedBody);
+      timing(`transport.handleRequest resolved (buffered ${bufferedCalls.length} calls, statusCode=${res.statusCode})`);
 
       settled = true;
       res.writeHead = originalWriteHead;
@@ -181,7 +188,9 @@ async function runHttp(): Promise<void> {
         })
       );
 
+      timing("about to call settlePayment (facilitator /settle)");
       const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context, responseBody);
+      timing(`settlePayment resolved (ok=${settleResult.ok})`);
       if (!settleResult.ok) {
         const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
         res.writeHead(settleResult.status, settleResult.headers).end(body);
@@ -191,6 +200,7 @@ async function runHttp(): Promise<void> {
         res.setHeader(key, value);
       }
       flushBuffered();
+      timing("flushBuffered done — response sent to client");
     } catch (err) {
       console.error("Error handling MCP HTTP request:", err);
       if (!res.headersSent) {
