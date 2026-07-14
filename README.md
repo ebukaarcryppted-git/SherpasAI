@@ -71,6 +71,7 @@ modes, in priority order, each backed by a real onchain read:
 | `BRIDGE_WITHIN_NORMAL_WINDOW` | Bridge transfer is still inside its documented expected transit time — not actually stuck. |
 | `BRIDGE_STUCK` | Past the expected window with no destination-chain landing — deepened further into sub-causes (e.g. past the fraud-proof challenge period, needs manual claim). |
 | `NOT_A_FAILURE` | The transaction actually succeeded cleanly — confirms health instead of assuming something's wrong. |
+| `REVERTED_OTHER` | Reverted with a reason that isn't one of the specific patterns above — surfaces the decoded revert string (or the raw revert-data selector for custom errors) as evidence, so the caller has something actionable to look up. |
 | `UNKNOWN_PENDING` | Nonce and gas both look fine; likely transient network congestion — reported as a low-confidence guess, not a false certainty. |
 | `INSUFFICIENT_BALANCE` | Wallet doesn't hold enough of the required asset to cover the transaction. |
 
@@ -125,7 +126,7 @@ diagnosis logic is written and tested exactly once.
 ## Features
 
 - **Rule-based, not LLM-based diagnosis** — deterministic, fixture-tested,
-  priority-ordered classification across 12 failure modes (see table above).
+  priority-ordered classification across 12 diagnosis modes (see table above).
 - **Live onchain reads** — real RPC calls against X Layer and Ethereum
   mainnet: transaction/receipt lookup, cross-chain hash search, nonce/gas
   context, allowance reads, bridge status, wallet balances and approval
