@@ -7,6 +7,7 @@ import { registerDiagnoseTool } from "./tools/diagnose.js";
 import { SERVER_NAME, SERVER_VERSION, SERVER_DESCRIPTION, DEFAULT_HTTP_PORT, MCP_HTTP_PATH } from "./constants.js";
 import { getX402Gate, settlePayment } from "./payments/x402Gate.js";
 import { checkRateLimit } from "./rateLimit.js";
+import { isDebugBridgeFieldsRequest, handleDebugBridgeFieldsRequest } from "./debugBridgeFields.js";
 
 /**
  * Applied ahead of the payment gate, so it protects the "ungated" fallback
@@ -58,6 +59,11 @@ async function runHttp(): Promise<void> {
   }
 
   const httpServer = createHttpServer(async (req, res) => {
+    if (isDebugBridgeFieldsRequest(req)) {
+      await handleDebugBridgeFieldsRequest(req, res);
+      return;
+    }
+
     if (!req.url || !req.url.startsWith(MCP_HTTP_PATH)) {
       res.writeHead(404).end("Not found");
       return;
