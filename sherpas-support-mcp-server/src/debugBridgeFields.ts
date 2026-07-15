@@ -48,8 +48,12 @@ export function isDebugBridgeFieldsRequest(req: IncomingMessage): boolean {
 }
 
 export async function handleDebugBridgeFieldsRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const url = new URL(req.url ?? "", "http://localhost");
+  const extraAddress = url.searchParams.get("address");
+  const addresses = extraAddress ? [extraAddress, ...CANDIDATE_ADDRESSES] : CANDIDATE_ADDRESSES;
+
   const results: Record<string, unknown> = {};
-  for (const address of CANDIDATE_ADDRESSES) {
+  for (const address of addresses) {
     try {
       const txs = await getTransactionList(address, 50);
       const withChallenge = txs.filter((t) => (t as { challengeStatus?: string }).challengeStatus);
