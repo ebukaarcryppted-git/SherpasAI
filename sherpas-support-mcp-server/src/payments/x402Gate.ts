@@ -1,7 +1,14 @@
 import type { IncomingMessage } from "node:http";
 import { OKXFacilitatorClient } from "@okxweb3/x402-core";
 import { x402ResourceServer } from "@okxweb3/x402-core/server";
-import { x402HTTPResourceServer, type HTTPAdapter, type HTTPRequestContext, type HTTPTransportContext } from "@okxweb3/x402-core/http";
+import {
+  x402HTTPResourceServer,
+  decodePaymentRequiredHeader,
+  decodePaymentResponseHeader,
+  type HTTPAdapter,
+  type HTTPRequestContext,
+  type HTTPTransportContext,
+} from "@okxweb3/x402-core/http";
 import type { Network, PaymentPayload, PaymentRequirements } from "@okxweb3/x402-core/types";
 import { ExactEvmScheme } from "@okxweb3/x402-evm/exact/server";
 import { MCP_HTTP_PATH } from "../constants.js";
@@ -102,7 +109,7 @@ export function getX402Gate(): PaymentGate {
           ok: false,
           status: result.response.status,
           headers: result.response.headers,
-          body: result.response.body,
+          body: mirrorX402HeaderIntoBody(result.response.headers, result.response.body),
         };
       }
 
@@ -157,7 +164,12 @@ export async function settlePayment(
   const result = await cachedGateHttpServer.processSettlement(paymentPayload, paymentRequirements, undefined, transportContext);
 
   if (!result.success) {
-    return { ok: false, status: result.response.status, headers: result.response.headers, body: result.response.body };
+    return {
+      ok: false,
+      status: result.response.status,
+      headers: result.response.headers,
+      body: mirrorX402HeaderIntoBody(result.response.headers, result.response.body),
+    };
   }
 
   void recordReceipt({
@@ -168,6 +180,38 @@ export async function settlePayment(
   });
 
   return { ok: true, headers: result.headers };
+}
+
+/**
+ * The x402-core SDK only puts the challenge / settlement-failure payload in
+ * a base64 header (PAYMENT-REQUIRED / PAYMENT-RESPONSE) and leaves the JSON
+ * body empty (`{}`) unless a route hook supplies one — see
+ * RouteConfig.unpaidResponseBody / settlementFailedResponseBody in
+ * @okxweb3/x402-core/http. OKX's A2MCP listing review flagged exactly this:
+ * their client expects the same challenge mirrored into the response body,
+ * not just the header, in order to complete its replay flow. Rather than
+ * duplicating the SDK's payload-construction logic via those hooks, we just
+ * decode whichever header the SDK already built and use that as the body —
+ * guarantees byte-for-byte agreement between the two by construction.
+ */
+function mirrorX402HeaderIntoBody(headers: Record<string, string>, fallbackBody: unknown): unknown {
+  const paymentRequired = headers["PAYMENT-REQUIRED"];
+  if (paymentRequired) {
+    try {
+      return decodePaymentRequiredHeader(paymentRequired);
+    } catch {
+      // fall through to fallbackBody
+    }
+  }
+  const paymentResponse = headers["PAYMENT-RESPONSE"];
+  if (paymentResponse) {
+    try {
+      return decodePaymentResponseHeader(paymentResponse);
+    } catch {
+      // fall through to fallbackBody
+    }
+  }
+  return fallbackBody;
 }
 
 async function buildAdapter(req: IncomingMessage): Promise<{ adapter: HTTPAdapter; parsedBody: unknown }> {
