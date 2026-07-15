@@ -78,7 +78,7 @@ export function Navbar() {
                 href={link.href}
                 className={
                   active
-                    ? "rounded-full bg-primary px-4 py-1.5 font-body text-sm font-semibold text-bg shadow-[0_0_24px_-4px_rgba(198,226,79,0.6)] transition duration-200"
+                    ? "rounded-full bg-primary px-4 py-1.5 font-body text-sm font-semibold text-bg transition duration-200"
                     : "rounded-full px-4 py-1.5 font-body text-sm text-text-muted transition duration-200 hover:bg-primary-soft hover:text-text"
                 }
               >
@@ -90,7 +90,7 @@ export function Navbar() {
 
         <a
           href="#diagnose"
-          className="cursor-pointer inline-block justify-self-end rounded-full border border-primary bg-primary px-5 py-2.5 font-body text-sm font-semibold text-bg shadow-[0_0_32px_-6px_rgba(198,226,79,0.55)] transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 hover:shadow-[0_0_40px_-4px_rgba(198,226,79,0.75)]"
+          className="cursor-pointer inline-block justify-self-end rounded-full border border-primary bg-primary px-5 py-2.5 font-body text-sm font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105"
         >
           Launch
         </a>

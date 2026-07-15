@@ -74,7 +74,7 @@ export function Hero() {
           </div>
           <button
             type="submit"
-            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg shadow-[0_0_32px_-6px_rgba(198,226,79,0.55)] transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 hover:shadow-[0_0_40px_-4px_rgba(198,226,79,0.75)]"
+            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105"
           >
             Diagnose
             <IconArrowRight className="h-4 w-4" />
