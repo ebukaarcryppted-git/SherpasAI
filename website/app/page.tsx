@@ -15,13 +15,13 @@ export default function Home() {
       <Navbar />
       <main className="flex-1">
         <Hero />
-        <FailureModes />
         <HowItWorks />
         <Suspense fallback={null}>
           <DiagnosisWidget />
         </Suspense>
         <ApprovalChecker />
         <BridgeChecker />
+        <FailureModes />
         <Composability />
       </main>
       <Footer />

@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import { SherpasLogo } from "./SherpasLogo";
 
 const links = [
-  { href: "#failure-modes", label: "Failure Modes" },
   { href: "#diagnose", label: "Diagnose" },
   { href: "#approvals", label: "Approvals" },
   { href: "#bridge", label: "Bridge" },
+  { href: "#failure-modes", label: "Failure Modes" },
 ];
 
 /**
