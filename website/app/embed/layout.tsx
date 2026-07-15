@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Sherpas Agent — Diagnose a transaction",
+  title: "Sherpas Agent: Diagnose a transaction",
   robots: { index: false },
 };
 

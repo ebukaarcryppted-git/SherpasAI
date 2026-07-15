@@ -5,7 +5,7 @@ const ITEMS = [
   {
     icon: IconLayers,
     title: "Hire it as a sub-task",
-    body: "A protocol's own support agent can call this ASP mid-conversation via OKX.AI's Agent Payments Protocol — no integration beyond one API call.",
+    body: "A protocol's own support agent can call this ASP mid-conversation via OKX.AI's Agent Payments Protocol, no integration beyond one API call.",
   },
   {
     icon: IconShield,
@@ -26,7 +26,7 @@ export function Composability() {
         <ScrollReveal>
           <div className="text-center">
             <span className="font-mono text-xs text-primary">{"// COMPOSABLE BY DESIGN"}</span>
-            <h2 className="mt-4 font-heading text-3xl font-bold tracking-tight text-text sm:text-4xl">
+            <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight text-text sm:text-5xl">
               Built to be hired, not just used
             </h2>
           </div>

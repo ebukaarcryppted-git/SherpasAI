@@ -56,12 +56,12 @@ export function FailureModes() {
             <span className="font-mono text-xs text-primary">
               {"// THE 6 THAT MATTER MOST"}
             </span>
-            <h2 className="mt-4 font-heading text-3xl font-bold tracking-tight text-text sm:text-4xl">
+            <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight text-text sm:text-5xl">
               Six failure modes, diagnosed perfectly
             </h2>
             <p className="mt-4 font-body text-text-muted leading-relaxed">
               Not a generic FAQ bot. Six patterns nailed completely, each
-              backed by a real read of chain state — not a guess.
+              backed by a real read of chain state, not a guess.
             </p>
           </div>
         </ScrollReveal>

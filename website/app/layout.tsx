@@ -36,7 +36,7 @@ const firaCode = Fira_Code({
 });
 
 export const metadata: Metadata = {
-  title: "Sherpas Agent ASP — Diagnose failed transactions on Ethereum & X Layer",
+  title: "Sherpas Agent ASP: Diagnose failed transactions on Ethereum & X Layer",
   description:
     "Paste a transaction hash. Get a plain-language diagnosis of why it failed and how to fix it, read straight from live Ethereum and X Layer chain data.",
 };

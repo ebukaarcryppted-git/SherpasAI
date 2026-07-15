@@ -48,7 +48,7 @@ export function BridgeChecker() {
       const timedOut = err instanceof Error && err.name === "TimeoutError";
       setError(
         timedOut
-          ? "This is taking too long — the chain RPC isn't responding. Try again in a moment."
+          ? "This is taking too long. The chain RPC isn't responding. Try again in a moment."
           : err instanceof Error
             ? err.message
             : "Something went wrong."
@@ -64,7 +64,7 @@ export function BridgeChecker() {
       <div className="mx-auto max-w-3xl">
         <div className="text-center">
           <span className="font-mono text-xs text-primary">{"// BRIDGE STATUS"}</span>
-          <h2 className="mt-4 font-heading text-3xl font-bold tracking-tight text-text sm:text-4xl">
+          <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight text-text sm:text-5xl">
             Is my bridge transfer stuck?
           </h2>
           <p className="mt-3 font-body text-text-muted">

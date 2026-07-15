@@ -9,7 +9,7 @@ const STEPS = [
   {
     n: "02",
     title: "We read the chain",
-    body: "Live viem calls against Ethereum and X Layer pull the tx, receipt, allowances, gas conditions, and nonce state — the same data a human would dig through a block explorer for.",
+    body: "Live viem calls against Ethereum and X Layer pull the tx, receipt, allowances, gas conditions, and nonce state, the same data a human would dig through a block explorer for.",
   },
   {
     n: "03",
@@ -27,7 +27,7 @@ export function HowItWorks() {
             <span className="font-mono text-xs text-primary">
               {"// FROM TICKET TO ANSWER"}
             </span>
-            <h2 className="mt-4 font-heading text-3xl font-bold tracking-tight text-text sm:text-4xl">
+            <h2 className="mt-4 font-heading text-4xl font-bold tracking-tight text-text sm:text-5xl">
               What took a human 10 minutes takes this 3 seconds
             </h2>
           </div>
