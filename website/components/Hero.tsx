@@ -1,23 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { IconArrowRight, IconSearch } from "./icons";
 import { WaveText } from "./WaveText";
+import { DiagnosisResult } from "./DiagnosisResult";
+import { useDiagnosis } from "@/lib/useDiagnosis";
 
 export function Hero() {
-  const router = useRouter();
   const [value, setValue] = useState("");
+  const { status, result, error, logIndex, runDiagnosis } = useDiagnosis();
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmed = value.trim();
-    const target = trimmed
-      ? `/?tx=${encodeURIComponent(trimmed)}#diagnose`
-      : "#diagnose";
-    router.push(target);
-    document.getElementById("diagnose")?.scrollIntoView({ behavior: "smooth" });
+    if (!trimmed || status === "loading") return;
+    runDiagnosis(trimmed);
   }
 
   return (
@@ -74,12 +72,17 @@ export function Hero() {
           </div>
           <button
             type="submit"
-            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105"
+            disabled={status === "loading"}
+            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Diagnose
-            <IconArrowRight className="h-4 w-4" />
+            {status === "loading" ? "Reading chain…" : "Diagnose"}
+            {status !== "loading" && <IconArrowRight className="h-4 w-4" />}
           </button>
         </form>
+
+        <div className="max-w-3xl">
+          <DiagnosisResult status={status} result={result} error={error} logIndex={logIndex} />
+        </div>
       </div>
     </section>
   );
