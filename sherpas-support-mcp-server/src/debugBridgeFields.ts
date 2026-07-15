@@ -36,32 +36,22 @@ async function okxGet(path: string): Promise<{ code: string; msg: string; data: 
   return json;
 }
 
-interface TxFillsResult {
-  outputDetails?: Array<{ outputHash: string; isContract: boolean }>;
-  state?: string;
-}
-
-async function getTransactionFills(txid: string): Promise<TxFillsResult> {
-  const path = `/api/v5/xlayer/transaction/transaction-fills?chainShortName=xlayer&txid=${txid}`;
-  const json = await okxGet(path);
-  return json.data[0] as TxFillsResult;
-}
-
 async function getTransactionList(address: string, limit = 50): Promise<Array<Record<string, unknown>>> {
   const path = `/api/v5/xlayer/address/transaction-list?chainShortName=xlayer&address=${address}&limit=${limit}`;
   const json = await okxGet(path);
   return (json.data[0] as { transactionLists: Array<Record<string, unknown>> }).transactionLists;
 }
 
-// Known real L1->L2 bridge deposit L2-side tx hashes, pulled from
-// oklink.com/x-layer/tx-list/l1tol2 (all sharing L1 sender
-// 0x2e96ee80e5f5cc659595245b3067c1afff8287e6, which turned out to be a
-// router/aggregator address, not necessarily the X Layer recipient —
-// hence resolving the real recipient from the tx detail below).
-const KNOWN_L2_DEPOSIT_TX_HASHES = [
-  "0xb6fd85c8441a0b457271bfef958e8c91a86e7c9e7cfa91650b3a03dbd29fdcc5",
-  "0x5f4a4e1a9f7c19c63d32b50b47534a45873c276d0e4a2231c908de2cdefb831b",
-  "0xd689438146177536d0670be3842bc3bf24dfbc295b41e44219e620e8c205c35d",
+// Real L2->L1 withdrawal transactions pulled from oklink.com/x-layer/tx-list/l2tol1,
+// including two still "Pending claim" (i.e. inside the fraud-proof challenge
+// window) and one completed one. challengeStatus is a withdrawal-specific
+// concept (deposits have no challenge period at all — see
+// docs/xlayer-onchainos.md security model), so this is the correct test
+// case, unlike the earlier deposit-based test round.
+const KNOWN_WITHDRAWALS = [
+  { label: "pending-1", sender: "0x3ecc1d702bc7e379fc7e70cba05162c501506ec7", l2TxHash: "0x3cbc1429bac2304f2a7f26d830e4179513ef3d14b8e7c06bfde7f2c6334e251a" },
+  { label: "completed", sender: "0x33fc2046b56497c4644c23bf26ce06a913e70429", l2TxHash: "0x27e16c77f0329b4044ef65aede65503308fb05ba514bcb470d48bdb06dc52469" },
+  { label: "pending-2", sender: "0x3707efbed8be2b8b7d7a58412eef27bef2c639e9", l2TxHash: "0xe1251de1adc9c19659d4185263a21bd79796c04e484ae84f0df824beed489654" },
 ];
 
 export function isDebugBridgeFieldsRequest(req: IncomingMessage): boolean {
@@ -71,30 +61,22 @@ export function isDebugBridgeFieldsRequest(req: IncomingMessage): boolean {
 export async function handleDebugBridgeFieldsRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const results: Record<string, unknown> = {};
 
-  for (const l2TxHash of KNOWN_L2_DEPOSIT_TX_HASHES) {
+  for (const { label, sender, l2TxHash } of KNOWN_WITHDRAWALS) {
     try {
-      const fills = await getTransactionFills(l2TxHash);
-      const recipient = fills.outputDetails?.[0]?.outputHash;
-      if (!recipient) {
-        results[l2TxHash] = { error: "no outputDetails/outputHash found on this tx", fills };
-        continue;
-      }
-
-      const txs = await getTransactionList(recipient, 50);
+      const txs = await getTransactionList(sender, 50);
       const matchingTx = txs.find((t) => (t as { txId?: string }).txId?.toLowerCase() === l2TxHash.toLowerCase());
 
-      results[l2TxHash] = {
-        resolvedRecipient: recipient,
-        recipientTxCount: txs.length,
+      results[label] = {
+        sender,
+        l2TxHash,
+        senderTxCount: txs.length,
         matchingTxFound: !!matchingTx,
         matchingTxEntry: matchingTx ?? null,
-        // Also report across ALL of this recipient's transactions, not just the matching one,
-        // in case the fields populate on other entries but not this exact one.
         anyChallengeStatusInList: txs.filter((t) => (t as { challengeStatus?: string }).challengeStatus).length,
         anyL1OriginHashInList: txs.filter((t) => (t as { l1OriginHash?: string }).l1OriginHash).length,
       };
     } catch (err) {
-      results[l2TxHash] = { error: err instanceof Error ? err.message : String(err) };
+      results[label] = { sender, l2TxHash, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
