@@ -26,21 +26,42 @@ function buildHeaders(method: string, path: string, body = ""): Record<string, s
   };
 }
 
-async function getTransactionList(address: string, limit = 50): Promise<unknown[]> {
-  const path = `/api/v5/xlayer/address/transaction-list?chainShortName=xlayer&address=${address}&limit=${limit}`;
+async function okxGet(path: string): Promise<{ code: string; msg: string; data: unknown[] }> {
   const headers = buildHeaders("GET", path);
   const res = await fetch(BASE_URL + path, { headers });
-  const json = (await res.json()) as { code: string; msg: string; data: Array<{ transactionLists: unknown[] }> };
+  const json = (await res.json()) as { code: string; msg: string; data: unknown[] };
   if (json.code !== "0") {
     throw new Error(`OKX API error ${json.code}: ${json.msg}`);
   }
-  return json.data[0].transactionLists;
+  return json;
 }
 
-const CANDIDATE_ADDRESSES = [
-  "0x2a3dd3eb832af982ec71669e178424b10dca2ede",
-  "0x611f7bf868a6212f871e89f7e44684045ddfb09d",
-  "0xa1d2c4533d867ce4623681f68df84d9cad73cb6b",
+interface TxFillsResult {
+  outputDetails?: Array<{ outputHash: string; isContract: boolean }>;
+  state?: string;
+}
+
+async function getTransactionFills(txid: string): Promise<TxFillsResult> {
+  const path = `/api/v5/xlayer/transaction/transaction-fills?chainShortName=xlayer&txid=${txid}`;
+  const json = await okxGet(path);
+  return json.data[0] as TxFillsResult;
+}
+
+async function getTransactionList(address: string, limit = 50): Promise<Array<Record<string, unknown>>> {
+  const path = `/api/v5/xlayer/address/transaction-list?chainShortName=xlayer&address=${address}&limit=${limit}`;
+  const json = await okxGet(path);
+  return (json.data[0] as { transactionLists: Array<Record<string, unknown>> }).transactionLists;
+}
+
+// Known real L1->L2 bridge deposit L2-side tx hashes, pulled from
+// oklink.com/x-layer/tx-list/l1tol2 (all sharing L1 sender
+// 0x2e96ee80e5f5cc659595245b3067c1afff8287e6, which turned out to be a
+// router/aggregator address, not necessarily the X Layer recipient —
+// hence resolving the real recipient from the tx detail below).
+const KNOWN_L2_DEPOSIT_TX_HASHES = [
+  "0xb6fd85c8441a0b457271bfef958e8c91a86e7c9e7cfa91650b3a03dbd29fdcc5",
+  "0x5f4a4e1a9f7c19c63d32b50b47534a45873c276d0e4a2231c908de2cdefb831b",
+  "0xd689438146177536d0670be3842bc3bf24dfbc295b41e44219e620e8c205c35d",
 ];
 
 export function isDebugBridgeFieldsRequest(req: IncomingMessage): boolean {
@@ -48,26 +69,34 @@ export function isDebugBridgeFieldsRequest(req: IncomingMessage): boolean {
 }
 
 export async function handleDebugBridgeFieldsRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const url = new URL(req.url ?? "", "http://localhost");
-  const extraAddress = url.searchParams.get("address");
-  const addresses = extraAddress ? [extraAddress, ...CANDIDATE_ADDRESSES] : CANDIDATE_ADDRESSES;
-
   const results: Record<string, unknown> = {};
-  for (const address of addresses) {
+
+  for (const l2TxHash of KNOWN_L2_DEPOSIT_TX_HASHES) {
     try {
-      const txs = await getTransactionList(address, 50);
-      const withChallenge = txs.filter((t) => (t as { challengeStatus?: string }).challengeStatus);
-      const withL1Origin = txs.filter((t) => (t as { l1OriginHash?: string }).l1OriginHash);
-      results[address] = {
-        fetched: txs.length,
-        challengeStatusPopulatedCount: withChallenge.length,
-        l1OriginHashPopulatedCount: withL1Origin.length,
-        sampleWithChallenge: withChallenge[0] ?? null,
-        sampleWithL1Origin: withL1Origin[0] ?? null,
+      const fills = await getTransactionFills(l2TxHash);
+      const recipient = fills.outputDetails?.[0]?.outputHash;
+      if (!recipient) {
+        results[l2TxHash] = { error: "no outputDetails/outputHash found on this tx", fills };
+        continue;
+      }
+
+      const txs = await getTransactionList(recipient, 50);
+      const matchingTx = txs.find((t) => (t as { txId?: string }).txId?.toLowerCase() === l2TxHash.toLowerCase());
+
+      results[l2TxHash] = {
+        resolvedRecipient: recipient,
+        recipientTxCount: txs.length,
+        matchingTxFound: !!matchingTx,
+        matchingTxEntry: matchingTx ?? null,
+        // Also report across ALL of this recipient's transactions, not just the matching one,
+        // in case the fields populate on other entries but not this exact one.
+        anyChallengeStatusInList: txs.filter((t) => (t as { challengeStatus?: string }).challengeStatus).length,
+        anyL1OriginHashInList: txs.filter((t) => (t as { l1OriginHash?: string }).l1OriginHash).length,
       };
     } catch (err) {
-      results[address] = { error: err instanceof Error ? err.message : String(err) };
+      results[l2TxHash] = { error: err instanceof Error ? err.message : String(err) };
     }
   }
+
   res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(results, null, 2));
 }
