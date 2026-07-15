@@ -70,9 +70,7 @@ export interface NonceContext {
 export type BridgeStatus =
   | "source_pending"
   | "in_transit"
-  | "needs_claim"
-  | "likely_completed"
-  | "stuck"
+  | "past_normal_window"
   | "unknown";
 
 export interface BridgeContext {
@@ -82,7 +80,5 @@ export interface BridgeContext {
   status: BridgeStatus;
   /** minutes since the source tx confirmed, if known */
   minutesSinceSourceConfirmed: number | null;
-  /** best-effort: whether the destination chain shows any recent inbound activity for this address */
-  destinationActivityDetected: boolean;
   note: string;
 }

@@ -65,12 +65,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.commandName === "bridge") {
       const txHash = interaction.options.getString("tx_hash", true) as Hash;
-      const recipient = interaction.options.getString("recipient", true) as Hex;
       const diagnosis = await diagnoseBridge(
         ETHEREUM_MAINNET_ID,
         X_LAYER_MAINNET_ID,
-        txHash,
-        recipient
+        txHash
       );
       await interaction.editReply({ embeds: [diagnosisToEmbed(diagnosis)] });
       return;

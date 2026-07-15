@@ -19,12 +19,9 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("bridge")
-    .setDescription("Check whether a bridge transfer is in transit, needs a claim, or is stuck")
+    .setDescription("Check whether a bridge transfer is in transit or past the normal window")
     .addStringOption((opt) =>
       opt.setName("tx_hash").setDescription("Source-chain transaction hash").setRequired(true)
-    )
-    .addStringOption((opt) =>
-      opt.setName("recipient").setDescription("Recipient address on the destination chain").setRequired(true)
     ),
 ].map((c) => c.toJSON());
 

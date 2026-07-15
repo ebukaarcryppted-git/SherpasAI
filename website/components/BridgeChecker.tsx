@@ -12,22 +12,19 @@ interface BridgeDiagnosisJSON {
 const STATUS_TONE: Record<string, string> = {
   in_transit: "border-warning text-warning",
   source_pending: "border-warning text-warning",
-  needs_claim: "border-warning text-warning",
-  stuck: "border-danger text-danger",
-  likely_completed: "border-success text-success",
+  past_normal_window: "border-warning text-warning",
   unknown: "border-border text-text-muted",
 };
 
 export function BridgeChecker() {
   const [hash, setHash] = useState("");
-  const [recipient, setRecipient] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [result, setResult] = useState<BridgeDiagnosisJSON | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!hash.trim() || !recipient.trim()) return;
+    if (!hash.trim()) return;
 
     setStatus("loading");
     setError(null);
@@ -37,7 +34,7 @@ export function BridgeChecker() {
       const res = await fetch("/api/bridge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hash: hash.trim(), recipient: recipient.trim() }),
+        body: JSON.stringify({ hash: hash.trim() }),
         signal: AbortSignal.timeout(20_000),
       });
       const data = await res.json();
@@ -69,12 +66,12 @@ export function BridgeChecker() {
           </h2>
           <p className="mt-3 font-body text-text-muted">
             Checks source-chain confirmation and elapsed time to tell you if funds are still in
-            transit, need a manual claim, or look genuinely stuck.
+            transit or past the normal transfer window.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-3">
-          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
+        <form onSubmit={handleSubmit} className="mt-10 flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-1 items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
             <IconBridge className="h-4 w-4 shrink-0 text-text-faint" />
             <input
               value={hash}
@@ -84,21 +81,12 @@ export function BridgeChecker() {
               className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
             />
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated/70 px-5 py-3.5 backdrop-blur-md focus-within:border-primary transition-colors duration-200">
-            <input
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder="0x… recipient address on the destination chain"
-              aria-label="Recipient address"
-              className="w-full bg-transparent font-mono text-base text-text placeholder:text-text-faint focus:outline-none"
-            />
-          </div>
           <button
             type="submit"
             disabled={status === "loading"}
-            className="cursor-pointer flex w-full items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            className="cursor-pointer flex items-center justify-center gap-2 rounded-full border border-primary bg-primary px-7 py-3.5 font-body text-base font-semibold text-bg transition duration-200 ease-out will-change-transform hover:bg-primary-hover hover:border-primary-hover hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {status === "loading" ? "Checking both chains…" : "Check bridge status"}
+            {status === "loading" ? "Checking…" : "Check bridge status"}
             {status !== "loading" && <IconArrowRight className="h-4 w-4" />}
           </button>
         </form>
@@ -116,7 +104,7 @@ export function BridgeChecker() {
         {status === "done" && result && (
           <div className={`mt-8 overflow-hidden rounded-2xl border ${tone} bg-bg-elevated/70 backdrop-blur-md shadow-[0_0_40px_-16px_rgba(198,226,79,0.25)]`}>
             <div className={`flex items-center gap-2 border-b border-border px-6 py-4 ${tone}`}>
-              {result.details.Status === "likely_completed" ? (
+              {result.details.Status === "in_transit" ? (
                 <IconCheck className="h-4 w-4" />
               ) : (
                 <IconAlert className="h-4 w-4" />

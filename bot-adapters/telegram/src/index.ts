@@ -64,9 +64,9 @@ bot.command("approvals", async (ctx) => {
 bot.command("bridge", async (ctx) => {
   if (!(await withinRateLimit(ctx))) return;
 
-  const [txHash, recipient] = ctx.message.text.split(/\s+/).slice(1);
-  if (!txHash || !recipient) {
-    await ctx.reply("Usage: /bridge <source_tx_hash> <recipient_address>");
+  const [txHash] = ctx.message.text.split(/\s+/).slice(1);
+  if (!txHash) {
+    await ctx.reply("Usage: /bridge <source_tx_hash>");
     return;
   }
 
@@ -74,8 +74,7 @@ bot.command("bridge", async (ctx) => {
     const diagnosis = await diagnoseBridge(
       ETHEREUM_MAINNET_ID,
       X_LAYER_MAINNET_ID,
-      txHash as Hash,
-      recipient as Hex
+      txHash as Hash
     );
     await ctx.replyWithHTML(diagnosisToMessage(diagnosis));
   } catch (err) {

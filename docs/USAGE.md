@@ -233,9 +233,8 @@ separate deployment of agent-core needed, they call it directly.
 4. Start it: `DISCORD_TOKEN=... npm run dev` (or `npm run build && npm start`).
 
 Commands: `/diagnose tx_hash:0x...`, `/approvals address:0x... tokens:0x...,0x...`,
-`/bridge tx_hash:0x... recipient:0x...`. Anyone pasting a bare 66-character
-tx hash in a channel the bot can see also gets an automatic reply — no
-command needed.
+`/bridge tx_hash:0x...`. Anyone pasting a bare 66-character tx hash in a
+channel the bot can see also gets an automatic reply — no command needed.
 
 ### Telegram
 
@@ -243,8 +242,8 @@ command needed.
 2. `TELEGRAM_BOT_TOKEN=... npm run dev` (or `npm run build && npm start`).
 
 Commands: `/diagnose <tx_hash>`, `/approvals <address> <token1,token2>`,
-`/bridge <tx_hash> <recipient>`. A bare tx hash sent as a plain message
-triggers the same auto-diagnosis.
+`/bridge <tx_hash>`. A bare tx hash sent as a plain message triggers the
+same auto-diagnosis.
 
 ### Deploying either one long-term
 

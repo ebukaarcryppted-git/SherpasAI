@@ -25,7 +25,7 @@ public bots.
 Behavior:
 - `/diagnose tx_hash:0x...` → embed with the diagnosis.
 - `/approvals address:0x... tokens:0x...,0x...` → approval hygiene report.
-- `/bridge tx_hash:0x... recipient:0x...` → bridge status.
+- `/bridge tx_hash:0x...` → bridge status.
 - Anyone pasting a bare 66-character tx hash in a channel the bot can see
   gets an automatic diagnosis reply — no command needed. This is the "drop a
   hash in the support channel" flow.
@@ -37,7 +37,7 @@ Behavior:
 
 Behavior:
 - `/diagnose <tx_hash>`, `/approvals <address> <token1,token2>`,
-  `/bridge <tx_hash> <recipient>`.
+  `/bridge <tx_hash>`.
 - A bare tx hash sent as a plain message triggers the same auto-diagnosis
   as Discord.
 

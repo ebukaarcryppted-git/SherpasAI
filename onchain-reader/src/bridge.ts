@@ -1,33 +1,39 @@
-import type { Hash, Hex } from "viem";
+import type { Hash } from "viem";
 import { getClient } from "./client.js";
 import { lookupTransactionOnChain } from "./tx.js";
 import type { BridgeContext, BridgeStatus } from "./types.js";
 
 /**
- * How long a canonical bridge transfer is expected to take before we treat
- * "no destination activity yet" as suspicious rather than just normal
- * in-flight latency. This is a heuristic, not a guarantee from the bridge
- * indexer (see note below) — kept generous since some bridge paths need a
- * manual claim step rather than an automatic mint.
+ * How long a canonical bridge transfer is expected to take before we stop
+ * calling it "in transit" and admit we have no further RPC-based signal.
+ * This is a heuristic, not a guarantee from the bridge indexer — kept
+ * generous since some bridge paths need a manual claim step rather than an
+ * automatic mint.
  */
 const IN_TRANSIT_GRACE_MINUTES = 15;
 
 /**
- * Best-effort check for the "stuck/pending bridge transaction" failure mode.
+ * Best-effort check for the "stuck/pending bridge transaction" failure mode,
+ * from the source-chain tx hash alone.
  *
  * Full correlation (matching a specific L1 deposit to its L2 mint, or an L2
- * withdrawal to its L1 claim) requires the X Layer Bridge Service / AggLayer
- * indexer API, which is not covered by the docs fetched into
- * docs/xlayer-onchainos.md. Until that's wired up, this reports what public
- * RPCs alone can tell us: the source-chain tx's confirmation status and
- * elapsed time, plus whether the recipient address shows any activity on
- * the destination chain (a weak signal, not proof of a matching mint/claim).
+ * withdrawal to its L1 claim) would need the X Layer Bridge Service /
+ * AggLayer indexer API — investigated directly against OKX's X Layer
+ * onchaindata API (challengeStatus/l1OriginHash fields on
+ * address/transaction-list) and confirmed those fields don't populate in
+ * practice, even for a live "Pending claim" withdrawal. An earlier version
+ * of this function asked for a destination recipient address and used its
+ * transaction-count as a proxy signal, but that's a false-positive trap: any
+ * wallet with prior unrelated activity on the destination chain would
+ * always read as "likely completed" regardless of whether this specific
+ * transfer arrived. Dropped entirely rather than keep a heuristic that
+ * actively misleads — this now only reports what the source-chain tx alone
+ * can honestly tell you.
  */
 export async function checkBridgeStatus(
   sourceChainId: number,
   destinationChainId: number,
-  sourceTxHash: Hash,
-  recipient: Hex
+  sourceTxHash: Hash
 ): Promise<BridgeContext> {
   const sourceTx = await lookupTransactionOnChain(sourceChainId, sourceTxHash);
 
@@ -38,7 +44,6 @@ export async function checkBridgeStatus(
       sourceTx,
       status: "unknown",
       minutesSinceSourceConfirmed: null,
-      destinationActivityDetected: false,
       note: "Source-chain transaction not found. Confirm the hash and source chain are correct.",
     };
   }
@@ -50,7 +55,6 @@ export async function checkBridgeStatus(
       sourceTx,
       status: "unknown",
       minutesSinceSourceConfirmed: null,
-      destinationActivityDetected: false,
       note: "Source-chain transaction reverted — funds never left the source chain, so there's nothing to bridge.",
     };
   }
@@ -62,7 +66,6 @@ export async function checkBridgeStatus(
       sourceTx,
       status: "source_pending",
       minutesSinceSourceConfirmed: null,
-      destinationActivityDetected: false,
       note: "Source-chain transaction hasn't confirmed yet; the bridge can't start processing until it does.",
     };
   }
@@ -74,15 +77,6 @@ export async function checkBridgeStatus(
     sourceTx.blockNumber
   );
 
-  const destClient = getClient(destinationChainId);
-  const destNonce = await destClient.getTransactionCount({
-    address: recipient,
-    blockTag: "latest",
-  });
-  // A nonzero nonce doesn't confirm the bridge mint/claim arrived, only that
-  // the address is active on the destination chain. Weak signal only.
-  const destinationActivityDetected = destNonce > 0;
-
   let status: BridgeStatus;
   let note: string;
 
@@ -92,12 +86,9 @@ export async function checkBridgeStatus(
   } else if (minutesSinceSourceConfirmed < IN_TRANSIT_GRACE_MINUTES) {
     status = "in_transit";
     note = `Source tx confirmed ${minutesSinceSourceConfirmed}m ago — still within the normal transfer window. Funds are likely in transit.`;
-  } else if (destinationActivityDetected) {
-    status = "likely_completed";
-    note = `Source tx confirmed ${minutesSinceSourceConfirmed}m ago and the destination address shows activity — the transfer has likely completed. This isn't a confirmed mint/claim match, just a corroborating signal.`;
   } else {
-    status = "stuck";
-    note = `Source tx confirmed ${minutesSinceSourceConfirmed}m ago with no destination activity detected. This may mean the transfer needs a manual claim on the destination chain, or is genuinely stuck — check the bridge UI for a pending claim before assuming it's lost.`;
+    status = "past_normal_window";
+    note = `Source tx confirmed ${minutesSinceSourceConfirmed}m ago, past the normal transfer window. This doesn't necessarily mean something's wrong — some bridge paths need a manual claim step on the destination chain rather than an automatic mint. Check the bridge UI for a pending claim, or check your destination-chain wallet directly. If there's genuinely nothing after a further wait, contact the bridge operator's support with this tx hash.`;
   }
 
   return {
@@ -106,7 +97,6 @@ export async function checkBridgeStatus(
     sourceTx,
     status,
     minutesSinceSourceConfirmed,
-    destinationActivityDetected,
     note,
   };
 }
