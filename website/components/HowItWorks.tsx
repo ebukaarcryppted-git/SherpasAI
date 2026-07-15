@@ -33,17 +33,17 @@ export function HowItWorks() {
           </div>
         </ScrollReveal>
 
-        <div className="mt-16 grid grid-cols-1 gap-10 md:grid-cols-3">
+        <div className="mt-16 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {STEPS.map((step, i) => (
             <ScrollReveal key={step.n} delay={i * 100}>
-              <div className="relative">
+              <div className="group h-full rounded-2xl border border-border bg-bg-elevated/60 p-7 backdrop-blur-md transition duration-300 ease-out will-change-transform hover:bg-bg-elevated-2/70 hover:scale-[1.02] hover:-translate-y-1 hover:border-primary/50 hover:shadow-[0_0_40px_-8px_rgba(198,226,79,0.35)]">
                 <div className="font-heading text-5xl font-bold text-primary-soft">
                   {step.n}
                 </div>
-                <h3 className="mt-4 font-heading text-2xl font-bold text-text">
+                <h3 className="mt-5 font-heading text-2xl font-bold text-text">
                   {step.title}
                 </h3>
-                <p className="mt-3 font-body text-sm leading-relaxed text-text-muted">
+                <p className="mt-2 font-body text-sm leading-relaxed text-text-muted">
                   {step.body}
                 </p>
               </div>
