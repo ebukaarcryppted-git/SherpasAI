@@ -63,6 +63,19 @@ async function runHttp(): Promise<void> {
       return;
     }
 
+    // CORS preflight never carries a payment header and shouldn't touch the
+    // payment gate at all — answer it directly so any browser-based or
+    // gateway-fronted caller can complete its preflight before the real POST.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept, PAYMENT-SIGNATURE",
+        "Access-Control-Max-Age": "86400",
+      }).end();
+      return;
+    }
+
     const rateLimit = checkRateLimit(clientKeyFor(req), RATE_LIMIT_PER_MINUTE);
     if (!rateLimit.allowed) {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -107,7 +120,15 @@ async function runHttp(): Promise<void> {
     try {
       await server.connect(transport);
 
-      if (!paymentGate.enabled) {
+      if (!paymentGate.enabled || !gateResult.paymentPayload) {
+        // Second condition covers requests that didn't actually go through
+        // the payment gate at all — e.g. a GET/HEAD/OPTIONS reachability
+        // probe or CORS preflight against MCP_HTTP_PATH, which doesn't match
+        // our POST-only route and so falls into x402Gate's defensive
+        // "no-payment-required" branch with a null payload. Calling
+        // settlePayment with that null payload crashed here (confirmed live:
+        // GET/HEAD/OPTIONS to /mcp all returned 500) — nothing to settle in
+        // that case, so skip straight to letting the MCP transport respond.
         await transport.handleRequest(req, res, gateResult.parsedBody);
         return;
       }
