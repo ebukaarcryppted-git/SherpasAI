@@ -5,6 +5,7 @@ import { buildDiagnosisInput, type BuildDiagnosisInputParams } from "./buildDiag
 import { buildBridgeInput } from "./buildBridgeInput.js";
 import { quantifySlippageV2, type QuantifiedSlippage } from "./quantifySlippage.js";
 import { deepenBridgeStuck, type BridgeDeepDiveResult } from "./bridgeDeepDive.js";
+import { explainLiveDiagnosis } from "./explainLiveDiagnosis.js";
 import { defaultLiveReaders, type LiveReaders } from "./readers.js";
 
 export interface DiagnoseLiveBridgeParams {
@@ -23,6 +24,10 @@ export interface DiagnoseLiveParams extends Omit<BuildDiagnosisInputParams, "txH
 }
 
 export interface LiveDiagnosis extends Diagnosis {
+  /** Plain-English summary of what happened — see explainLiveDiagnosis.ts. */
+  headline: string;
+  /** Plain-English, actionable next step — see explainLiveDiagnosis.ts. */
+  fix: string;
   /** Only present for a plain (non-bridge) successful tx — classify.ts itself has no "success" mode, since it's a failure classifier. */
   healthy?: boolean;
   /** Only present for SLIPPAGE_REVERT when the swap was a decodable standard V2-style call. */
@@ -30,6 +35,9 @@ export interface LiveDiagnosis extends Diagnosis {
   /** Only present for BRIDGE_STUCK. */
   bridgeDeepDive?: BridgeDeepDiveResult;
 }
+
+/** The shape being built up across diagnoseLive's branches, before headline/fix are attached at the point of return. */
+type LiveDiagnosisDraft = Omit<LiveDiagnosis, "headline" | "fix">;
 
 /**
  * The Phase 2 entry point: real onchain reads -> classify.diagnose() ->
@@ -47,6 +55,8 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
         providedValue: params.txHash,
       },
       ruleTriggered: "diagnoseLive:invalidHashFormat",
+      headline: "That doesn't look like a valid transaction hash.",
+      fix: "A transaction hash is 66 characters long and starts with '0x'. Double-check for a dropped or extra character.",
     };
   }
 
@@ -76,7 +86,7 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
   // WRONG_NETWORK verdict — it's a `networkNote` we attach *after* the
   // real diagnosis runs, so a tx that succeeded on the "wrong" chain
   // still gets its real status reported, augmented by the note.
-  const diagnosis: LiveDiagnosis = diagnose(input, deps);
+  const diagnosis: LiveDiagnosisDraft = diagnose(input, deps);
   if (networkNote) diagnosis.networkNote = networkNote;
 
   if (
@@ -97,6 +107,8 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
       ruleTriggered: "diagnoseLive:successNoRuleMatched",
       healthy: true,
       networkNote,
+      headline: "Good news — this transaction went through successfully.",
+      fix: "There's nothing to fix here.",
     };
   }
 
@@ -165,5 +177,5 @@ export async function diagnoseLive(params: DiagnoseLiveParams): Promise<LiveDiag
     });
   }
 
-  return diagnosis;
+  return { ...diagnosis, ...explainLiveDiagnosis(diagnosis) };
 }

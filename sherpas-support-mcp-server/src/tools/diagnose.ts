@@ -35,6 +35,8 @@ const DiagnoseOutputSchema = z
     confidence: z.number().min(0).max(1).describe("0-1 confidence score for this classification"),
     evidence: z.record(z.string(), z.unknown()).describe("Raw signals that justified the classification"),
     ruleTriggered: z.string().describe("Which internal rule fired — useful for debugging/transparency"),
+    headline: z.string().describe("Plain-English, one-line summary of what happened"),
+    fix: z.string().describe("Plain-English, actionable next step for the user to resolve or verify this"),
     healthy: z.boolean().optional().describe("Present and true only when the transaction succeeded with no failure detected"),
     quantifiedSlippage: z
       .record(z.string(), z.unknown())
@@ -56,7 +58,7 @@ Args:
 - chainId (required): the chain the transaction was actually submitted on. Currently supported: ${listSupportedChains()}.
 - expectedChainId (optional): the chain a dApp/widget expected the wallet to be on. If this differs from chainId, wrong-network is detected immediately from the two given values — no extra RPC calls needed. Omit this if you don't already know it; the tool still detects wrong-network on its own by searching a small set of chains when the tx isn't found where expected.
 
-Returns a Diagnosis: { mode, confidence, evidence, ruleTriggered, healthy?, quantifiedSlippage?, bridgeDeepDive? }.
+Returns a Diagnosis: { mode, confidence, evidence, ruleTriggered, headline, fix, healthy?, quantifiedSlippage?, bridgeDeepDive? }. headline and fix are plain-English — a one-line summary of what happened and an actionable next step — ready to relay directly to an end user without further interpretation.
 
 Use this when: a user reports "my transaction failed", "my swap didn't work", "my tokens haven't arrived", or pastes a transaction hash asking what went wrong.
 Don't use this when: the user wants to broadcast, sign, or simulate a NEW transaction (this tool is read-only and diagnoses transactions that already happened), or wants price/market data unrelated to a specific transaction.
@@ -98,7 +100,7 @@ export function registerDiagnoseTool(server: McpServer): void {
         content: [
           {
             type: "text",
-            text: `${diagnosis.mode} (confidence ${diagnosis.confidence}): ${JSON.stringify(diagnosis.evidence)}`,
+            text: `${diagnosis.headline} ${diagnosis.fix}`,
           },
         ],
         structuredContent: diagnosis,
