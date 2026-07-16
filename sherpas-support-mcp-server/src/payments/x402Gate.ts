@@ -71,7 +71,13 @@ export function getX402Gate(): PaymentGate {
   const resourceServer = new x402ResourceServer(facilitatorClient).register(X_LAYER_NETWORK, new ExactEvmScheme());
 
   const routes = {
-    [`POST ${MCP_HTTP_PATH}`]: {
+    // No verb prefix on purpose (matches any method, not just POST): OKX's
+    // own A2MCP endpoint validator was confirmed sending a bare GET to check
+    // x402 compliance, contrary to the guide's own POST-based self-check
+    // example. A POST-only route left GET unmatched, so it fell through to
+    // the MCP transport's own Accept-header enforcement and returned 406
+    // instead of the expected 402 challenge, failing OKX's automated review.
+    [MCP_HTTP_PATH]: {
       accepts: {
         scheme: "exact",
         network: X_LAYER_NETWORK,
