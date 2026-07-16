@@ -62,6 +62,7 @@ modes, in priority order, each backed by a real onchain read:
 
 | Mode | What it means |
 |---|---|
+| `WRONG_NETWORK` | The wallet's connected chain doesn't match the chain a dApp declared it expected — detected immediately from the two given facts, no extra RPC calls. (Separate from the `networkNote` case above, where the tx itself is simply found on a different chain than hinted.) |
 | `NONCE_ALREADY_USED` | A different transaction already confirmed at this nonce. |
 | `NONCE_GAP` | An earlier-nonce transaction hasn't confirmed yet, so this one is stuck queued behind it. |
 | `GAS_UNDERPRICED` | Fee was below the current network minimum at submission (or has since fallen behind), sitting unmined. |
@@ -126,7 +127,7 @@ diagnosis logic is written and tested exactly once.
 ## Features
 
 - **Rule-based, not LLM-based diagnosis** — deterministic, fixture-tested,
-  priority-ordered classification across 12 diagnosis modes (see table above).
+  priority-ordered classification across 13 diagnosis modes (see table above).
 - **Live onchain reads** — real RPC calls against X Layer and Ethereum
   mainnet: transaction/receipt lookup, cross-chain hash search, nonce/gas
   context, allowance reads, bridge status, wallet balances and approval
@@ -273,11 +274,16 @@ OKX.AI requires for A2MCP-listed services:
    own gas-funded signer wallet.
 
 This means:
-- **Any MCP-aware agent can pay directly.** Because the gate lives on the
-  MCP server itself, a third-party autonomous agent that discovers this ASP
-  just needs a wallet holding USD₮0 on X Layer — the diagnosis tool is a
-  payable primitive any agent can use, not something locked inside one
-  product.
+- **Any MCP-aware agent can pay directly** — and so can a plain HTTP caller
+  that doesn't speak MCP at all. The same `/mcp` URL auto-detects a real MCP
+  JSON-RPC envelope vs. a plain call (query params or a plain JSON body,
+  matching OKX.AI's own A2MCP marketplace convention) and answers each
+  correctly — no separate endpoint needed. See
+  [`sherpas-support-mcp-server`'s README](sherpas-support-mcp-server/README.md#calling-convention-mcp-json-rpc-or-plain-http)
+  for the exact contract. Because the gate lives on the MCP server itself, a
+  third-party autonomous agent that discovers this ASP just needs a wallet
+  holding USD₮0 on X Layer — the diagnosis tool is a payable primitive any
+  agent can use, not something locked inside one product.
 - **No self-managed settlement infrastructure.** Unlike a channel-based
   protocol, the seller doesn't sign or submit anything on-chain itself —
   OKX's facilitator does that, using the seller's own API credentials.
@@ -321,9 +327,9 @@ pitch as presented on the site.
 ## Supported chains
 
 - **Ethereum mainnet** (chain ID `1`) and **X Layer mainnet** (chain ID
-  `196`) — both diagnosed as equally first-class chains; MPP payment
-  settlement happens on X Layer specifically, since that's where OKX's
-  shared escrow contract is deployed
+  `196`) — both diagnosed as equally first-class chains; x402 payment
+  settlement happens on X Layer specifically (`eip155:196`), where this
+  ASP's price and payout address are configured
 - **X Layer testnet / X1 Testnet** (chain ID `1952`) — dev-only convenience,
   not one of the two production chains above
 
