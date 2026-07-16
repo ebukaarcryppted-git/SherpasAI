@@ -54,12 +54,18 @@ export function getX402Gate(): PaymentGate {
     cachedGate = {
       enabled: false,
       async initialize() {},
-      async check(_req) {
+      // Still reads the real body (rather than hardcoding undefined) so
+      // local ungated testing exercises the same parsedBody-driven routing
+      // (isMcpJsonRpcEnvelope / handleSimpleCall) that production runs under
+      // the enabled gate below — otherwise a real MCP JSON-RPC POST would
+      // read as an empty body here and get misrouted to the simple-call path.
+      async check(req) {
+        const { parsedBody } = await parseJsonBody(req);
         return {
           ok: true,
           paymentPayload: null as unknown as PaymentPayload,
           paymentRequirements: null as unknown as PaymentRequirements,
-          parsedBody: undefined,
+          parsedBody,
           context: null as unknown as HTTPRequestContext,
         };
       },
@@ -220,7 +226,7 @@ function mirrorX402HeaderIntoBody(headers: Record<string, string>, fallbackBody:
   return fallbackBody;
 }
 
-async function buildAdapter(req: IncomingMessage): Promise<{ adapter: HTTPAdapter; parsedBody: unknown }> {
+async function parseJsonBody(req: IncomingMessage): Promise<{ parsedBody: unknown }> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const bodyBuffer = Buffer.concat(chunks);
@@ -233,6 +239,11 @@ async function buildAdapter(req: IncomingMessage): Promise<{ adapter: HTTPAdapte
       parsedBody = undefined;
     }
   }
+  return { parsedBody };
+}
+
+async function buildAdapter(req: IncomingMessage): Promise<{ adapter: HTTPAdapter; parsedBody: unknown }> {
+  const { parsedBody } = await parseJsonBody(req);
 
   const getHeader = (name: string): string | undefined => {
     const value = req.headers[name.toLowerCase()];

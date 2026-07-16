@@ -1,19 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { safeErrorMessage } from "@support-agent-asp/agent-core";
-import { live, isSupportedChain, listSupportedChains } from "../services/onchain-reader.js";
-
-const TIMEOUT_PATTERNS = [/timeout/i, /timed out/i, /econnreset/i, /fetch failed/i, /socket hang up/i];
-
-function isTimeoutLike(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return TIMEOUT_PATTERNS.some((pattern) => pattern.test(message));
-}
-
-/** Deep-converts bigints to strings so the result is valid JSON for structuredContent. */
-function toJsonSafe(value: unknown): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? v.toString() : v)));
-}
+import { listSupportedChains } from "../services/onchain-reader.js";
+import { runDiagnosis } from "../services/runDiagnosis.js";
 
 const DiagnoseInputSchema = z
   .object({
@@ -96,51 +84,25 @@ export function registerDiagnoseTool(server: McpServer): void {
       },
     },
     async ({ txHash, chainId, expectedChainId }) => {
-      if (!isSupportedChain(chainId)) {
-        const message = `Chain ID ${chainId} isn't supported by this server. Supported chains: ${listSupportedChains()}.`;
+      const result = await runDiagnosis({ txHash, chainId, expectedChainId });
+
+      if (!result.ok) {
         return {
-          content: [{ type: "text", text: message }],
+          content: [{ type: "text", text: result.error }],
           isError: true,
         };
       }
 
-      try {
-        const diagnosis = await live.diagnoseLive({
-          txHash: txHash as `0x${string}`,
-          expectedChainId: chainId,
-          dappExpectedChainId: expectedChainId,
-        });
-
-        const structuredContent = toJsonSafe(diagnosis);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: `${diagnosis.mode} (confidence ${diagnosis.confidence}): ${JSON.stringify(diagnosis.evidence)}`,
-            },
-          ],
-          structuredContent,
-        };
-      } catch (err) {
-        if (isTimeoutLike(err)) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "The chain read timed out. This is likely transient network congestion on a public RPC, not a permanent failure — retrying the same request is reasonable.",
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const message = safeErrorMessage(err, "Diagnosis failed — an unexpected error occurred reading chain data.", "diagnose_transaction failed:");
-        return {
-          content: [{ type: "text", text: message }],
-          isError: true,
-        };
-      }
+      const diagnosis = result.diagnosis;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${diagnosis.mode} (confidence ${diagnosis.confidence}): ${JSON.stringify(diagnosis.evidence)}`,
+          },
+        ],
+        structuredContent: diagnosis,
+      };
     }
   );
 }

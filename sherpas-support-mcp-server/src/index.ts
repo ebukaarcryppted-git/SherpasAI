@@ -7,6 +7,7 @@ import { registerDiagnoseTool } from "./tools/diagnose.js";
 import { SERVER_NAME, SERVER_VERSION, SERVER_DESCRIPTION, DEFAULT_HTTP_PORT, MCP_HTTP_PATH } from "./constants.js";
 import { getX402Gate, settlePayment } from "./payments/x402Gate.js";
 import { checkRateLimit } from "./rateLimit.js";
+import { isMcpJsonRpcEnvelope, handleSimpleCall } from "./simpleCall.js";
 
 /**
  * Applied ahead of the payment gate, so it protects the "ungated" fallback
@@ -109,48 +110,57 @@ async function runHttp(): Promise<void> {
       return;
     }
 
-    const server = createServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-
-    res.on("close", () => {
-      transport.close();
-      server.close();
-    });
-
     try {
-      await server.connect(transport);
-
-      if (!paymentGate.enabled || !gateResult.paymentPayload) {
-        // Second condition covers requests that didn't actually go through
-        // the payment gate at all — e.g. a GET/HEAD/OPTIONS reachability
-        // probe or CORS preflight against MCP_HTTP_PATH, which doesn't match
-        // our POST-only route and so falls into x402Gate's defensive
-        // "no-payment-required" branch with a null payload. Calling
-        // settlePayment with that null payload crashed here (confirmed live:
-        // GET/HEAD/OPTIONS to /mcp all returned 500) — nothing to settle in
-        // that case, so skip straight to letting the MCP transport respond.
-        await transport.handleRequest(req, res, gateResult.parsedBody);
-        return;
-      }
-
-      // Settle BEFORE handing off to the MCP transport, not after — a prior
-      // buffer-then-replay attempt (matching @okxweb3/x402-express's Express
-      // middleware) broke here because MCP's StreamableHTTPServerTransport
+      // Settle BEFORE handing off to either response path, not after — a
+      // prior buffer-then-replay attempt (matching @okxweb3/x402-express's
+      // Express middleware) broke here because MCP's StreamableHTTPServerTransport
       // sends headers directly (flushHeaders / raw socket writes) in ways
       // res.writeHead/write/end overrides can't catch, so post-tool
       // res.writeHead would crash with ERR_HTTP_HEADERS_SENT and leave the
       // client hanging. Settling first is safe here specifically because
       // diagnose_transaction is a deterministic RPC read that essentially
       // never errors — see settlePayment JSDoc for the tradeoff notes.
-      const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context);
-      if (!settleResult.ok) {
-        const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
-        res.writeHead(settleResult.status, settleResult.headers).end(body);
+      //
+      // Only settle when there's an actual payment payload to settle —
+      // gateResult.paymentPayload is null for requests that didn't go
+      // through the payment gate at all (e.g. a GET/HEAD reachability probe
+      // against MCP_HTTP_PATH when the gate is disabled). Calling
+      // settlePayment with a null payload crashed here (confirmed live:
+      // GET/HEAD/OPTIONS to /mcp all returned 500).
+      if (paymentGate.enabled && gateResult.paymentPayload) {
+        const settleResult = await settlePayment(gateResult.paymentPayload, gateResult.paymentRequirements, gateResult.context);
+        if (!settleResult.ok) {
+          const body = typeof settleResult.body === "string" ? settleResult.body : JSON.stringify(settleResult.body);
+          res.writeHead(settleResult.status, settleResult.headers).end(body);
+          return;
+        }
+        for (const [key, value] of Object.entries(settleResult.headers)) {
+          res.setHeader(key, value);
+        }
+      }
+
+      // OKX's A2MCP marketplace calling convention turned out to be a plain
+      // "POST params, get your result back directly" contract — no JSON-RPC
+      // envelope, no MCP protocol at all (their real caller was confirmed
+      // live to retry with a GET request, which the official MCP transport
+      // can't carry a tool call through — GET is reserved for opening an SSE
+      // notification stream per the MCP spec, a structural mismatch). Any
+      // request whose body isn't a real MCP JSON-RPC envelope is handled
+      // directly here — including a bodyless GET, which pulls params from
+      // the query string instead — bypassing the MCP transport entirely so
+      // real MCP clients and OKX's A2MCP caller can both call the same URL.
+      if (!isMcpJsonRpcEnvelope(gateResult.parsedBody)) {
+        await handleSimpleCall(req, res, gateResult.parsedBody);
         return;
       }
-      for (const [key, value] of Object.entries(settleResult.headers)) {
-        res.setHeader(key, value);
-      }
+
+      const server = createServer();
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      res.on("close", () => {
+        transport.close();
+        server.close();
+      });
+      await server.connect(transport);
 
       // parsedBody is passed through because the payment gate already
       // buffered and consumed req's body stream — handleRequest must not
