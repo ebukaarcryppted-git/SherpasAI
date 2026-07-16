@@ -59,11 +59,27 @@ call `diagnose_transaction` automatically when it recognizes the request.
 | `chainId` | number | yes | Chain the tx was submitted on (1 = Ethereum, 196 = X Layer) |
 | `expectedChainId` | number | no | Chain a dApp expected the wallet to be on — enables wrong-network detection from the two given facts alone, no extra RPC calls |
 
-Returns a `Diagnosis`: `{ mode, confidence, evidence, ruleTriggered, healthy?, quantifiedSlippage?, bridgeDeepDive? }`, as both:
-- `content` — a short human-readable text summary (for a chat model relaying the answer)
+Returns a `Diagnosis`: `{ mode, confidence, evidence, ruleTriggered, headline, fix, healthy?, quantifiedSlippage?, bridgeDeepDive? }`, as both:
+- `content` — a short human-readable text summary (`headline` + `fix`, ready to relay directly)
 - `structuredContent` — the full JSON object (for a programmatic caller)
 
 **Annotations:** read-only, non-destructive, idempotent, open-world (touches external RPC state).
+
+## Calling convention: MCP JSON-RPC, or plain HTTP
+
+`/mcp` serves two calling conventions on the same URL, auto-detected per request:
+
+- **Real MCP client** (Claude Desktop, an MCP SDK): send a standard JSON-RPC
+  envelope (`{"jsonrpc":"2.0",...}`) — handled by the official
+  `@modelcontextprotocol/sdk` transport, unchanged.
+- **Plain A2MCP caller** (OKX.AI's marketplace convention, or any HTTP client
+  that doesn't speak MCP): send `txHash`/`hash` and optionally
+  `chainId`/`expectedChainId` as query params (`GET`) or a plain JSON body
+  (any method) — answered directly with the flat `Diagnosis` JSON, no
+  envelope required.
+
+Any request body that isn't a JSON-RPC envelope (including a bodyless GET)
+is treated as a plain call — see `src/simpleCall.ts`.
 
 ## Testing before relying on it
 
@@ -74,15 +90,22 @@ npm run build --workspace=sherpas-support-mcp-server
 # 2. Inspect the tool schema and run it manually
 npx @modelcontextprotocol/inspector node sherpas-support-mcp-server/dist/index.js
 
-# 3. Manual HTTP smoke test (after starting with `npm run start:http`)
+# 3. Manual HTTP smoke test (after starting with `npm run start:http`) — real MCP JSON-RPC
 curl -X POST http://localhost:3333/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# 4. Plain A2MCP-style call — same URL, no JSON-RPC envelope
+curl "http://localhost:3333/mcp?txHash=0x...&chainId=1"
 ```
 
 ## What this package does NOT do
 
 - No new diagnosis logic — zero new rules, this is pure interface over `agent-core`.
-- No payment/gating — see `docs/asp-registration.md` at the repo root for that phase.
 - No `registerResource` — a single stateless tool call fits this use case; there's no persistent resource to expose.
+
+Payment gating (x402, "exact" scheme on X Layer) is handled by
+`src/payments/x402Gate.ts` — see the root `README.md`'s
+[Payments](../README.md#payments--pay-as-you-go) section and
+`docs/asp-registration.md` for the full flow.
