@@ -11,6 +11,7 @@ import {
 } from "@okxweb3/x402-core/http";
 import type { Network, PaymentPayload, PaymentRequirements } from "@okxweb3/x402-core/types";
 import { ExactEvmScheme } from "@okxweb3/x402-evm/exact/server";
+import { AggrDeferredEvmScheme } from "@okxweb3/x402-evm/deferred/server";
 import { MCP_HTTP_PATH } from "../constants.js";
 import { DIAGNOSIS_UNIT_PRICE_USD } from "./pricing.js";
 import { recordReceipt } from "./receiptLog.js";
@@ -74,7 +75,15 @@ export function getX402Gate(): PaymentGate {
   }
 
   const facilitatorClient = new OKXFacilitatorClient({ apiKey, secretKey, passphrase });
-  const resourceServer = new x402ResourceServer(facilitatorClient).register(X_LAYER_NETWORK, new ExactEvmScheme());
+  // Both schemes registered for the same network: OKX's own reference 402
+  // challenge example offers "exact" AND "aggr_deferred" side by side in
+  // `accepts[]` — a listing that only offers "exact" doesn't match that
+  // reference shape. aggr_deferred needs no extra seller-side logic (the
+  // OKX facilitator batches session-key signatures asynchronously and
+  // reports success immediately); registering it is all this scheme needs.
+  const resourceServer = new x402ResourceServer(facilitatorClient)
+    .register(X_LAYER_NETWORK, new ExactEvmScheme())
+    .register(X_LAYER_NETWORK, new AggrDeferredEvmScheme());
 
   const routes = {
     // No verb prefix on purpose (matches any method, not just POST): OKX's
@@ -84,13 +93,26 @@ export function getX402Gate(): PaymentGate {
     // the MCP transport's own Accept-header enforcement and returned 406
     // instead of the expected 402 challenge, failing OKX's automated review.
     [MCP_HTTP_PATH]: {
-      accepts: {
-        scheme: "exact",
-        network: X_LAYER_NETWORK,
-        payTo,
-        price: `$${DIAGNOSIS_UNIT_PRICE_USD}`,
-        maxTimeoutSeconds: 300,
-      },
+      // Both schemes offered side by side, matching OKX's own reference
+      // 402 challenge example (which lists "exact" and "aggr_deferred"
+      // together in `accepts[]`) — a listing offering only "exact" doesn't
+      // match that reference shape.
+      accepts: [
+        {
+          scheme: "exact",
+          network: X_LAYER_NETWORK,
+          payTo,
+          price: `$${DIAGNOSIS_UNIT_PRICE_USD}`,
+          maxTimeoutSeconds: 300,
+        },
+        {
+          scheme: "aggr_deferred",
+          network: X_LAYER_NETWORK,
+          payTo,
+          price: `$${DIAGNOSIS_UNIT_PRICE_USD}`,
+          maxTimeoutSeconds: 300,
+        },
+      ],
       description: "diagnose_transaction - pay-as-you-go onchain diagnosis",
       mimeType: "application/json",
     },
